@@ -1,9 +1,24 @@
 {
   "name": "On Delivery",
   "short_name": "OnDelivery",
-  "start_url": "./index.html",
+  "description": "PWA de recepción y gestión de pedidos para aliados, motorizados y administradores.",
+  "start_url": ".",
+  "scope": ".",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#d62828",
-  "description": "PWA para recepción y gestión de pedidos"
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
