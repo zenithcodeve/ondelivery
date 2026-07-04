@@ -4,6 +4,11 @@ const SUPABASE_URL = 'https://knnnjyeinpbrurrcctya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtubm5qeWVpbnBicnVycmNjdHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODc2NTYsImV4cCI6MjA5ODc2MzY1Nn0.0J9XDcFSqgNTSr4Tg8T6s_qJAAJdeW3kr5vPvWUTYZ4';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const audioAlarm = new Audio('https://www.myinstants.com/media/sounds/alarm-alerta.mp3');
+audioAlarm.preload = 'auto';
+audioAlarm.volume = 0.8;
+let soundEnabled = localStorage.getItem('soundEnabled');
+if (soundEnabled === null) soundEnabled = 'true';
+soundEnabled = soundEnabled === 'true';
 let deferredPrompt = null;
 let currentUser = null;
 let currentProfile = null;
@@ -65,6 +70,8 @@ const elements = {
   aliadoOrderFilter: document.getElementById('aliado-order-filter'),
   aliadoStartDate: document.getElementById('aliado-start-date'),
   aliadoEndDate: document.getElementById('aliado-end-date'),
+  btnTestSound: document.getElementById('btn-test-sound'),
+  btnSoundToggle: document.getElementById('btn-sound-toggle'),
   btnExportAliado: document.getElementById('btn-export-aliado'),
   btnExportAdmin: document.getElementById('btn-export-admin'),
   adminStartDate: document.getElementById('admin-start-date'),
@@ -680,10 +687,28 @@ async function notifyNewOrder() {
     if (Notification.permission === 'granted') {
       new Notification('On Delivery', { body: 'Ha llegado un nuevo pedido disponible.', icon: 'icon-192.png' });
     }
-    await audioAlarm.play();
+    if (soundEnabled) {
+      try {
+        await audioAlarm.play();
+      } catch (err) {
+        console.debug('Audio play failed:', err);
+      }
+    }
   } catch (error) {
     console.warn('No se pudo reproducir el sonido.', error);
   }
+}
+
+function updateSoundButton() {
+  if (!elements.btnSoundToggle) return;
+  elements.btnSoundToggle.textContent = soundEnabled ? '🔔 Sonido' : '🔕 Sonido';
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem('soundEnabled', soundEnabled ? 'true' : 'false');
+  updateSoundButton();
+  setStatus(soundEnabled ? 'Sonido activado.' : 'Sonido desactivado.', 'Preferencia');
 }
 
 function startRealtimePoll() {
@@ -842,6 +867,21 @@ elements.btnAdminFilter.addEventListener('click', loadAdminOrders);
 elements.btnAssignCommerce.addEventListener('click', assignCommerce);
 elements.btnExportAliado.addEventListener('click', exportAliadoOrders);
 elements.btnExportAdmin.addEventListener('click', exportAdminOrders);
+
+if (elements.btnTestSound) {
+  elements.btnTestSound.addEventListener('click', async () => {
+    try {
+      await audioAlarm.play();
+    } catch (err) {
+      console.debug('Test audio play failed:', err);
+      setStatus('Haz interactuado: el navegador puede bloquear reproducción automática hasta que haya interacción.', 'Atención', false);
+    }
+  });
+}
+if (elements.btnSoundToggle) {
+  elements.btnSoundToggle.addEventListener('click', toggleSound);
+}
+updateSoundButton();
 
 setTabBehavior();
 renderPriceOptions();
