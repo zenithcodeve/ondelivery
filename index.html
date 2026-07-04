@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#d62828" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="On Delivery" />
+    <title>On Delivery</title>
+    <link rel="manifest" href="./manifest.json" />
+    <style>
+      :root {
+        --bg: #f5f5f5;
+        --panel: #ffffff;
+        --text: #121212;
+        --muted: #6b7280;
+        --accent: #d62828;
+        --accent-dark: #a61b1b;
+        --border: #e5e7eb;
+        --success: #15803d;
+        --warning: #b45309;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .app-shell {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      .card {
+        background: var(--panel);
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        border: 1px solid var(--border);
+        padding: 20px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-badge {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, var(--accent), #ff4d4d);
+        color: white;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 20px;
+      }
+
+      .muted { color: var(--muted); }
+      .hidden { display: none !important; }
+
+      .auth-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+
+      form { display: grid; gap: 12px; }
+      label { display: grid; gap: 6px; font-weight: 600; }
+      input, select, textarea {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: white;
+        font-size: 15px;
+      }
+
+      textarea { min-height: 90px; resize: vertical; }
+
+      button {
+        border: none;
+        border-radius: 10px;
+        padding: 11px 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .btn-primary { background: var(--accent); color: white; }
+      .btn-secondary { background: #111; color: white; }
+      .btn-success { background: var(--success); color: white; }
+      .btn-alert { background: var(--warning); color: white; }
+      .btn-outline {
+        background: white;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+      }
+
+      .tab-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .tab-group button.active {
+        background: var(--accent);
+        color: white;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .stat { padding: 16px; border-radius: 14px; background: #111; color: white; }
+      .stat .value { font-size: 24px; font-weight: 700; }
+
+      .order-list { display: grid; gap: 12px; }
+      .order-card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 14px;
+        background: #fafafa;
+      }
+      .order-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+      .tag {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        background: #fde2e2;
+        color: var(--accent);
+      }
+
+      .price-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .price-chip {
+        padding: 10px;
+        text-align: center;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        cursor: pointer;
+        background: white;
+      }
+      .price-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+      .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+
+      .toast {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        background: #111;
+        color: white;
+        padding: 12px 14px;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        transform: translateY(12px);
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.2s ease;
+      }
+      .toast.show { opacity: 1; transform: translateY(0); }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        display: grid;
+        place-items: center;
+        padding: 18px;
+        z-index: 30;
+      }
+      .modal-card {
+        width: min(620px, 100%);
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.28);
+      }
+      .hidden { display: none !important; }
+
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+      th { color: var(--muted); font-weight: 700; }
+
+      @media (max-width: 800px) {
+        .auth-grid, .stats-grid, .price-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header>
+        <div class="brand">
+          <div class="brand-badge">OD</div>
+          <div>
+            <h1>On Delivery</h1>
+            <div class="muted">PWA de recepción y gestión de pedidos</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div id="userBadge" class="muted"></div>
+          <button id="installBtn" class="btn-outline" type="button">Instalar app</button>
+          <button id="logoutBtn" class="btn-outline hidden" type="button">Cerrar sesión</button>
+        </div>
+      </header>
+
+      <section id="authView" class="card">
+        <div class="auth-grid">
+          <div>
+            <h2>Iniciar sesión</h2>
+            <form id="loginForm">
+              <label>
+                Correo
+                <input type="email" id="loginEmail" required />
+              </label>
+              <label>
+                Clave
+                <input type="password" id="loginPassword" required />
+              </label>
+              <button class="btn-primary" type="submit">Entrar</button>
+            </form>
+          </div>
+          <div>
+            <h2>Registrarse</h2>
+            <form id="registerForm">
+              <label>
+                Nombre
+                <input type="text" id="registerName" required />
+              </label>
+              <label>
+                Correo
+                <input type="email" id="registerEmail" required />
+              </label>
+              <label>
+                Clave
+                <input type="password" id="registerPassword" required />
+              </label>
+              <label>
+                Comercio (opcional)
+                <input type="text" id="registerCommerce" placeholder="Ej. La Cocina" />
+              </label>
+              <button class="btn-secondary" type="submit">Crear cuenta</button>
+            </form>
+            <p class="muted">El rol se asignará luego desde administración. Mientras tanto, el acceso quedará pendiente de aprobación.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="appView" class="hidden">
+        <div id="pendingRoleView" class="card hidden">
+          <h2>Tu cuenta está pendiente de rol</h2>
+          <p class="muted">Tu registro se creó correctamente. Cuando un administrador te asigne un rol podrás ver tu panel.</p>
+        </div>
+        <div id="roleContent"></div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast"></div>
+    <div id="orderModal" class="modal-backdrop hidden"></div>
+    <audio id="notificationSound" preload="auto"></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./supabase-config.js"></script>
+    <script src="./app.js"></script>
+    <script>
+      const STORAGE_KEYS = {
+        session: 'ondelivery_session'
+      };
+
+      let state = {
+        users: [],
+        orders: [],
+        assignments: {},
+        dailyEarnings: {},
+        currentUser: null,
+        selectedPrice: null,
+        activeAliadoTab: 'pendientes',
+        motoHistoryFilter: 'all',
+        motoHistoryStart: '',
+        motoHistoryEnd: '',
+        adminFilterAlly: 'all',
+        adminFilterMoto: 'all',
+        adminFilterPeriod: 'all',
+        adminFilterStart: '',
+        adminFilterEnd: '',
+        motoEarningsFilter: 'today'
+      };
+
+      document.addEventListener('DOMContentLoaded', () => {
+        initApp();
+      });
+
+      async function initApp() {
+        await syncSupabaseState();
+
+        state.currentUser = restoreSession();
+        syncAllMotoAvailability();
+        bindAuthForms();
+        bindLogout();
+        bindInstallButton();
+        registerServiceWorker();
+        renderAuth();
+        if (state.currentUser) {
+          renderDashboard();
+        }
+      }
+
+      async function syncSupabaseState() {
+        try {
+          const users = await fetchSupabaseUsers();
+          const orders = await fetchSupabaseOrders();
+          const earnings = await fetchSupabaseEarnings();
+          state.users = users;
+          state.orders = orders;
+          state.dailyEarnings = earnings;
+          state.assignments = buildAssignmentsFromOrders(orders);
+          if (!state.users.length) {
+            state.users = [
+              { id: 'admin-1', name: 'Admin', email: 'admin@ondelivery.com', password: 'admin123', role: 'admin', available: true },
+              { id: 'moto-1', name: 'Motorizado Demo', email: 'moto@ondelivery.com', password: 'moto123', role: 'motorizado', available: true },
+              { id: 'aliado-1', name: 'Comercio Demo', email: 'aliado@ondelivery.com', password: 'aliado123', role: 'aliado', commerceName: 'Comercio Demo', available: true }
+            ];
+            state.assignments = { 'aliado-1': ['moto-1'] };
+            await Promise.allSettled(state.users.map((user) => saveUserToSupabase(user)));
+          }
+          if (!state.orders.length) {
+            const seedOrder = {
+              id: 'ord-001',
+              commerceId: 'aliado-1',
+              commerceName: 'Comercio Demo',
+              recipientName: 'Ana Pérez',
+              recipientPhone: '+584120000001',
+              address: 'Av. Principal, Qta. El Sol',
+              addressUrl: 'https://maps.google.com/?q=10.4806,-66.9036',
+              price: 6,
+              urgency: 'normal',
+              description: '2 cajas de empanadas',
+              status: 'pendiente',
+              createdAt: new Date().toISOString(),
+              assignedMotoIds: ['moto-1']
+            };
+            await saveOrderToSupabase(seedOrder);
+            state.orders = [seedOrder];
+          }
+        } catch (error) {
+          console.warn('Supabase no disponible; se usará el estado local', error);
+          if (!state.users.length) {
+            state.users = [
+              { id: 'admin-1', name: 'Admin', email: 'admin@ondelivery.com', password: 'admin123', role: 'admin', available: true },
+              { id: 'moto-1', name: 'Motorizado Demo', email: 'moto@ondelivery.com', password: 'moto123', role: 'motorizado', available: true },
+              { id: 'aliado-1', name: 'Comercio Demo', email: 'aliado@ondelivery.com', password: 'aliado123', role: 'aliado', commerceName: 'Comercio Demo', available: true }
+            ];
+          }
+          if (!state.orders.length) {
+            state.orders = [{
+              id: 'ord-001',
+              commerceId: 'aliado-1',
+              commerceName: 'Comercio Demo',
+              recipientName: 'Ana Pérez',
+              recipientPhone: '+584120000001',
+              address: 'Av. Principal, Qta. El Sol',
+              addressUrl: 'https://maps.google.com/?q=10.4806,-66.9036',
+              price: 6,
+              urgency: 'normal',
+              description: '2 cajas de empanadas',
+              status: 'pendiente',
+              createdAt: new Date().toISOString(),
+              assignedMotoIds: ['moto-1']
+            }];
+          }
+        }
+        persist();
+      }
+
+      function bindAuthForms() {
+        document.getElementById('loginForm').addEventListener('submit', (event) => {
+          event.preventDefault();
+          const email = document.getElementById('loginEmail').value.trim();
+          const password = document.getElementById('loginPassword').value;
+          loginUser(email, password);
+        });
+
+        document.getElementById('registerForm').addEventListener('submit', (event) => {
+          event.preventDefault();
+          const name = document.getElementById('registerName').value.trim();
+          const email = document.getElementById('registerEmail').value.trim();
+          const password = document.getElementById('registerPassword').value;
+          const commerceName = document.getElementById('registerCommerce').value.trim();
+          registerUser({ name, email, password, commerceName });
+        });
+      }
+
+      async function loginUser(email, password) {
+        const user = state.users.find((item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password);
+        if (!user) {
+          showToast('Credenciales incorrectas');
+          return;
+        }
+        state.currentUser = user;
+        persistSession(user.id);
+        persist();
+        try {
+          await saveUserToSupabase(user);
+        } catch (error) {
+          console.warn('No se pudo sincronizar el usuario', error);
+        }
+        renderAuth();
+        renderDashboard();
+      }
+
+      async function registerUser({ name, email, password, commerceName }) {
+        const exists = state.users.some((item) => item.email.toLowerCase() === email.toLowerCase());
+        if (exists) {
+          showToast('Ese correo ya existe');
+          return;
+        }
+
+        const newUser = {
+          id: `user-${Date.now()}`,
+          name,
+          email,
+          password,
+          role: null,
+          commerceName: commerceName || name
+        };
+
+        state.users.push(newUser);
+        state.currentUser = newUser;
+        persistSession(newUser.id);
+        persist();
+        try {
+          await saveUserToSupabase(newUser);
+        } catch (error) {
+          console.warn('No se pudo sincronizar el nuevo usuario', error);
+        }
+        renderAuth();
+        renderDashboard();
+        showToast('Registro creado. Espera a que un administrador te asigne un rol.');
+      }
+
+      function renderAuth() {
+        const authView = document.getElementById('authView');
+        const appView = document.getElementById('appView');
+        const userBadge = document.getElementById('userBadge');
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (state.currentUser) {
+          authView.classList.add('hidden');
+          appView.classList.remove('hidden');
+          userBadge.textContent = `${state.currentUser.name} • ${state.currentUser.role || 'pendiente'}`;
+          logoutBtn.classList.remove('hidden');
+        } else {
+          authView.classList.remove('hidden');
+          appView.classList.add('hidden');
+          userBadge.textContent = '';
+          logoutBtn.classList.add('hidden');
+        }
+      }
+
+      function buildAssignmentsFromOrders(orders) {
+        return orders.reduce((accumulator, order) => {
+          if (order.commerceId && order.assignedMotoIds?.length) {
+            accumulator[order.commerceId] = order.assignedMotoIds;
+          }
+          return accumulator;
+        }, {});
+      }
+
+      function renderDashboard() {
+        if (!state.currentUser) return;
+        const roleContent = document.getElementById('roleContent');
+        const pendingRoleView = document.getElementById('pendingRoleView');
+
+        if (!state.currentUser.role) {
+          pendingRoleView.classList.remove('hidden');
+          roleContent.innerHTML = '';
+          return;
+        }
+
+        pendingRoleView.classList.add('hidden');
+        if (state.currentUser.role === 'aliado') {
+          roleContent.innerHTML = renderAliadoView();
+          bindAliadoActions();
+        } else if (state.currentUser.role === 'motorizado') {
+          roleContent.innerHTML = renderMotorizadoView();
+          bindMotorizadoActions();
+        } else if (state.currentUser.role === 'admin') {
+          roleContent.innerHTML = renderAdminView();
+          bindAdminActions();
+        }
+      }
+
+      function renderAliadoView() {
+        const pending = state.orders.filter((order) => order.commerceId === state.currentUser.id && order.status === 'pendiente');
+        const inTransit = state.orders.filter((order) => order.commerceId === state.currentUser.id && order.status === 'en_camino');
+        const delivered = state.orders.filter((order) => order.commerceId === state.currentUser.id && order.status === 'entregado');
+
+        const activeTab = state.activeAliadoTab;
+        const contentByTab = {
+          pendientes: pending,
+          camino: inTransit,
+          entregados: delivered
+        };
+
+        return `
+          <div class="card">
+            <h2>Panel aliado</h2>
+            <p class="muted">Gestiona tus pedidos y solicita delivery para tus clientes.</p>
+            <div class="tab-group">
+              <button class="${activeTab === 'pendientes' ? 'active' : ''}" data-tab="pendientes">Pedidos pendientes</button>
+              <button class="${activeTab === 'camino' ? 'active' : ''}" data-tab="camino">Pedidos en camino</button>
+              <button class="${activeTab === 'entregados' ? 'active' : ''}" data-tab="entregados">Pedidos entregados</button>
+            </div>
+            <div class="pill-row">
+              <button class="btn-secondary" data-action="delivery-form">Pedir delivery</button>
+              <button class="btn-outline" data-action="price-whatsapp">Pedir precio de delivery</button>
+            </div>
+            <div class="order-list">
+              ${(contentByTab[activeTab] || []).length ? contentByTab[activeTab].map(renderAliadoOrderCard).join('') : `<div class="order-card"><p class="muted">No hay pedidos en esta sección.</p></div>`}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderAliadoOrderCard(order) {
+        const assignedMoto = (order.assignedMotoIds || []).map((id) => getUserName(id)).join(', ') || 'Sin asignar';
+        return `
+          <div class="order-card">
+            <div class="order-head">
+              <strong>${order.recipientName}</strong>
+              <span class="tag">${order.status === 'pendiente' ? 'Pendiente' : order.status === 'en_camino' ? 'En camino' : 'Entregado'}</span>
+            </div>
+            <p class="muted">${order.description}</p>
+            <p><strong>Teléfono:</strong> ${order.recipientPhone}</p>
+            <p><strong>Dirección:</strong> ${order.address}</p>
+            <p><strong>Precio:</strong> $${order.price.toFixed(2)}</p>
+            <p><strong>Urgencia:</strong> ${order.urgency === 'urgente' ? 'Urgente' : 'Normal'}</p>
+            <p><strong>Motorizado asignado:</strong> ${assignedMoto}</p>
+          </div>
+        `;
+      }
+
+      function bindAliadoActions() {
+        document.querySelectorAll('[data-tab]').forEach((button) => {
+          button.addEventListener('click', () => {
+            state.activeAliadoTab = button.getAttribute('data-tab');
+            renderDashboard();
+          });
+        });
+
+        document.querySelector('[data-action="delivery-form"]').addEventListener('click', () => {
+          const form = document.createElement('div');
+          form.innerHTML = `
+            <div class="card" style="margin-top: 14px;">
+              <h3>Solicitar delivery</h3>
+              <form id="deliveryForm">
+                <label>Nombre de quien recibe<input name="recipientName" required /></label>
+                <label>Teléfono de quien recibe<input name="recipientPhone" required /></label>
+                <label>Dirección escrita<textarea name="address" required></textarea></label>
+                <label>Dirección URL<input name="addressUrl" /></label>
+                <div class="price-grid">
+                  ${['1','1.5','2','2.5','3','3.5','4','4.5','5','5.5','6','7','8','9','10','11','12'].map((value) => `<button type="button" class="price-chip ${state.selectedPrice === value ? 'active' : ''}" data-price="${value}">$${value}</button>`).join('')}
+                </div>
+                <label>Precio a mano<input type="number" step="0.5" name="manualPrice" /></label>
+                <div class="pill-row">
+                  <button type="button" class="btn-success" data-urgency="urgente">Urgente</button>
+                  <button type="button" class="btn-secondary" data-urgency="normal">Entrega normal</button>
+                </div>
+                <label>Descripción de lo que lleva<textarea name="description" required></textarea></label>
+                <button class="btn-primary" type="submit">Enviar pedido</button>
+              </form>
+            </div>
+          `;
+          const container = document.querySelector('#roleContent');
+          container.appendChild(form);
+          bindDeliveryForm();
+        });
+
+        document.querySelector('[data-action="price-whatsapp"]').addEventListener('click', () => {
+          window.open('https://wa.me/584128481584?text=Hola%20quiero%20consultar%20el%20precio%20de%20delivery', '_blank');
+        });
+      }
+
+      function bindDeliveryForm() {
+        const form = document.getElementById('deliveryForm');
+        const urgencyButtons = form.querySelectorAll('[data-urgency]');
+        let urgency = 'normal';
+        urgencyButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            urgency = button.getAttribute('data-urgency');
+            urgencyButtons.forEach((item) => item.classList.remove('active'));
+            button.classList.add('active');
+          });
+        });
+
+        form.querySelectorAll('[data-price]').forEach((button) => {
+          button.addEventListener('click', () => {
+            state.selectedPrice = button.getAttribute('data-price');
+            form.querySelectorAll('[data-price]').forEach((item) => item.classList.remove('active'));
+            button.classList.add('active');
+            form.elements.manualPrice.value = '';
+          });
+        });
+
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const formData = new FormData(form);
+          const price = Number(formData.get('manualPrice') || state.selectedPrice || 0);
+          const order = {
+            id: `ord-${Date.now()}`,
+            commerceId: state.currentUser.id,
+            commerceName: state.currentUser.commerceName || state.currentUser.name,
+            recipientName: formData.get('recipientName'),
+            recipientPhone: formData.get('recipientPhone'),
+            address: formData.get('address'),
+            addressUrl: formData.get('addressUrl'),
+            price,
+            urgency,
+            description: formData.get('description'),
+            status: 'pendiente',
+            createdAt: new Date().toISOString(),
+            assignedMotoIds: state.assignments[state.currentUser.id] || []
+          };
+          state.orders.unshift(order);
+          await saveOrderToSupabase(order);
+          persist();
+          renderDashboard();
+          playNotificationSound();
+          showToast('Pedido enviado. Los motorizados asignados recibirán la solicitud.');
+        });
+      }
+
+      function renderMotorizadoView() {
+        const inProgress = state.orders.filter((order) => ['aceptado', 'en_camino'].includes(order.status) && order.acceptedBy === state.currentUser.id);
+        const delivered = state.orders.filter((order) => order.status === 'entregado' && order.acceptedBy === state.currentUser.id);
+        const cancelled = state.orders.filter((order) => order.status === 'cancelado' && order.acceptedBy === state.currentUser.id);
+        const available = state.orders.filter((order) => isOrderVisibleToMoto(order) && order.status === 'pendiente');
+        const availability = getMotoAvailability(state.currentUser.id);
+        const activeOrder = inProgress[0] || null;
+        const earningsSummary = getEarningsSummary(state.currentUser.id);
+        const history = getFilteredOrders(
+          state.orders.filter((order) => order.acceptedBy === state.currentUser.id && ['entregado', 'en_camino', 'cancelado', 'aceptado'].includes(order.status)),
+          {
+            period: state.motoHistoryFilter,
+            startDate: state.motoHistoryStart,
+            endDate: state.motoHistoryEnd
+          }
+        );
+        return `
+          <div class="card">
+            <h2>Panel motorizado</h2>
+            <div class="stats-grid">
+              <div class="stat"><div class="value">${inProgress.length}</div><div>En curso</div></div>
+              <div class="stat"><div class="value">${delivered.length}</div><div>Entregados</div></div>
+              <div class="stat"><div class="value">${cancelled.length}</div><div>Cancelados</div></div>
+              <div class="stat"><div class="value">${formatCurrency(totalEarnings(state.currentUser.id))}</div><div>Ganancia</div></div>
+            </div>
+            <div class="pill-row">
+              <button class="${availability.available ? 'btn-success' : 'btn-alert'}" data-action="toggle-availability" data-id="${state.currentUser.id}">${availability.available ? 'ON' : 'OFF'} · ${availability.available ? 'Disponible' : 'Ocupado'}</button>
+              <button class="btn-outline" data-action="reset-earnings">Reiniciar ganancias del turno</button>
+            </div>
+            <div class="pill-row">
+              <label>Filtrar ganancias<select id="motoEarningsFilter">
+                <option value="today" ${state.motoEarningsFilter === 'today' ? 'selected' : ''}>Hoy</option>
+                <option value="week" ${state.motoEarningsFilter === 'week' ? 'selected' : ''}>Semana</option>
+                <option value="month" ${state.motoEarningsFilter === 'month' ? 'selected' : ''}>Mes</option>
+                <option value="all" ${state.motoEarningsFilter === 'all' ? 'selected' : ''}>Todo</option>
+              </select></label>
+              <div class="card" style="padding: 10px 12px;">Ganancia filtrada: <strong>${formatCurrency(earningsSummary.total)}</strong></div>
+            </div>
+            <h3>Pedidos pendientes</h3>
+            <div class="order-list">
+              ${available.length ? available.map(renderMotoAvailableOrder).join('') : '<div class="order-card"><p class="muted">No hay pedidos pendientes.</p></div>'}
+            </div>
+            <h3 style="margin-top: 16px;">Pedidos en curso</h3>
+            <div class="order-list">
+              ${activeOrder ? renderMotoPendingOrder(activeOrder) : '<div class="order-card"><p class="muted">No tienes pedidos en curso.</p></div>'}
+            </div>
+            <h3 style="margin-top: 16px;">Pedidos entregados</h3>
+            <div class="order-list">
+              ${delivered.length ? delivered.map(renderMotoSimpleOrder).join('') : '<div class="order-card"><p class="muted">Aún no hay entregas.</p></div>'}
+            </div>
+            <h3 style="margin-top: 16px;">Pedidos cancelados</h3>
+            <div class="order-list">
+              ${cancelled.length ? cancelled.map(renderMotoSimpleOrder).join('') : '<div class="order-card"><p class="muted">No hay pedidos cancelados.</p></div>'}
+            </div>
+            <h3 style="margin-top: 16px;">Historial</h3>
+            <div class="pill-row">
+              <label>Periodo<select id="motoHistoryFilterSelect">
+                <option value="all" ${state.motoHistoryFilter === 'all' ? 'selected' : ''}>Todo</option>
+                <option value="day" ${state.motoHistoryFilter === 'day' ? 'selected' : ''}>Día</option>
+                <option value="week" ${state.motoHistoryFilter === 'week' ? 'selected' : ''}>Semana</option>
+                <option value="month" ${state.motoHistoryFilter === 'month' ? 'selected' : ''}>Mes</option>
+                <option value="custom" ${state.motoHistoryFilter === 'custom' ? 'selected' : ''}>Rango</option>
+              </select></label>
+              <label>Desde<input type="date" id="motoHistoryStart" value="${state.motoHistoryStart || ''}" /></label>
+              <label>Hasta<input type="date" id="motoHistoryEnd" value="${state.motoHistoryEnd || ''}" /></label>
+            </div>
+            <div class="order-list">
+              ${history.length ? history.map(renderMotoSimpleOrder).join('') : '<div class="order-card"><p class="muted">No hay historial para este filtro.</p></div>'}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderMotoAvailableOrder(order) {
+        return `
+          <div class="order-card">
+            <div class="order-head">
+              <strong>${order.commerceName}</strong>
+              <span class="tag">${order.urgency === 'urgente' ? 'Urgente' : 'Normal'}</span>
+            </div>
+            <p><strong>Cliente:</strong> ${order.recipientName}</p>
+            <p><strong>Dirección:</strong> ${order.address}</p>
+            <p><strong>Teléfono:</strong> ${order.recipientPhone || 'Sin teléfono'}</p>
+            <p><strong>URL:</strong> ${order.addressUrl || 'Sin URL'}</p>
+            <p><strong>Descripción:</strong> ${order.description}</p>
+            <p><strong>Precio:</strong> $${order.price.toFixed(2)}</p>
+            <div class="pill-row">
+              <button class="btn-success" data-action="accept" data-id="${order.id}">Aceptar pedido</button>
+              <button class="btn-alert" data-action="cancel" data-id="${order.id}">Cancelar pedido</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderMotoPendingOrder(order) {
+        return `
+          <div class="order-card">
+            <div class="order-head">
+              <strong>${order.commerceName}</strong>
+              <span class="tag">${order.urgency === 'urgente' ? 'Urgente' : 'Normal'}</span>
+            </div>
+            <p><strong>Cliente:</strong> ${order.recipientName}</p>
+            <p><strong>Dirección:</strong> ${order.address}</p>
+            <p><strong>Teléfono:</strong> ${order.recipientPhone || 'Sin teléfono'}</p>
+            <p><strong>URL:</strong> ${order.addressUrl || 'Sin URL'}</p>
+            <p><strong>Descripción:</strong> ${order.description}</p>
+            <p><strong>Precio:</strong> $${order.price.toFixed(2)}</p>
+            <div class="pill-row">
+              ${order.status === 'aceptado' ? `<button class="btn-secondary" data-moto-action="camino" data-id="${order.id}">Pedido en camino</button>` : ''}
+              <button class="btn-primary" data-moto-action="entregado" data-id="${order.id}">${order.status === 'aceptado' ? 'Pedido entregado' : 'Pedido entregado'}</button>
+              <button class="btn-alert" data-action="cancel" data-id="${order.id}">Cancelar pedido</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderMotoSimpleOrder(order) {
+        return `
+          <div class="order-card">
+            <div class="order-head">
+              <strong>${order.commerceName}</strong>
+              <span class="tag">${order.status}</span>
+            </div>
+            <p>${order.description}</p>
+            <p><strong>Teléfono:</strong> ${order.recipientPhone || 'Sin teléfono'}</p>
+            <p><strong>URL:</strong> ${order.addressUrl || 'Sin URL'}</p>
+            <p><strong>Precio:</strong> $${order.price.toFixed(2)} • <strong>Ganancia:</strong> $${(order.price * 0.6).toFixed(2)}</p>
+            <div class="pill-row">
+              <button class="btn-outline" data-action="reopen-order" data-id="${order.id}">Reabrir pedido</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function bindInstallButton() {
+        const installBtn = document.getElementById('installBtn');
+        if (!installBtn) return;
+        installBtn.addEventListener('click', async () => {
+          await installApp();
+        });
+      }
+
+      function bindMotorizadoActions() {
+        document.querySelectorAll('[data-action="reset-earnings"]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            state.dailyEarnings[state.currentUser.id] = [];
+            await clearEarningsForMoto(state.currentUser.id);
+            persist();
+            renderDashboard();
+            showToast('Ganancias reiniciadas para el turno.');
+          });
+        });
+
+        const earningsFilter = document.getElementById('motoEarningsFilter');
+        if (earningsFilter) {
+          earningsFilter.addEventListener('change', (event) => {
+            state.motoEarningsFilter = event.target.value;
+            renderDashboard();
+          });
+        }
+
+        document.querySelectorAll('[data-action="toggle-availability"]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const user = state.users.find((item) => item.id === state.currentUser.id);
+            if (!user) return;
+            user.available = !user.available;
+            await saveUserToSupabase(user);
+            persist();
+            renderDashboard();
+          });
+        });
+
+        document.querySelectorAll('[data-action="accept"]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const id = button.getAttribute('data-id');
+            const order = state.orders.find((item) => item.id === id);
+            if (order) {
+              order.status = 'aceptado';
+              order.acceptedBy = state.currentUser.id;
+              order.acceptedAt = new Date().toISOString();
+              syncMotoAvailability(state.currentUser.id);
+              await updateOrderInSupabase(order);
+              persist();
+              renderDashboard();
+              showToast('Pedido aceptado. Ahora aparece en tus pedidos en curso.');
+            }
+          });
+        });
+
+        document.querySelectorAll('[data-action="reopen-order"]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const id = button.getAttribute('data-id');
+            const order = state.orders.find((item) => item.id === id);
+            if (order) {
+              order.status = 'aceptado';
+              order.acceptedBy = state.currentUser.id;
+              await updateOrderInSupabase(order);
+              persist();
+              renderDashboard();
+              showToast('Pedido reabierto.');
+            }
+          });
+        });
+
+        document.querySelectorAll('[data-action="cancel"]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const id = button.getAttribute('data-id');
+            const order = state.orders.find((item) => item.id === id);
+            if (order) {
+              order.status = 'cancelado';
+              order.acceptedBy = state.currentUser.id;
+              syncMotoAvailability(state.currentUser.id);
+              await updateOrderInSupabase(order);
+              persist();
+              renderDashboard();
+              showToast('Pedido cancelado.');
+            }
+          });
+        });
+
+        document.querySelectorAll('[data-moto-action]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const id = button.getAttribute('data-id');
+            const action = button.getAttribute('data-moto-action');
+            const order = state.orders.find((item) => item.id === id);
+            if (!order) return;
+            if (action === 'camino') {
+              order.status = 'en_camino';
+            } else if (action === 'entregado') {
+              order.status = 'entregado';
+              recordEarning(state.currentUser.id, order.price * 0.6, order.id);
+            }
+            syncMotoAvailability(state.currentUser.id);
+            await updateOrderInSupabase(order);
+            persist();
+            renderDashboard();
+          });
+        });
+
+        const historyFilter = document.getElementById('motoHistoryFilterSelect');
+        const historyStart = document.getElementById('motoHistoryStart');
+        const historyEnd = document.getElementById('motoHistoryEnd');
+        if (historyFilter) {
+          historyFilter.addEventListener('change', (event) => {
+            state.motoHistoryFilter = event.target.value;
+            renderDashboard();
+          });
+        }
+        if (historyStart) {
+          historyStart.addEventListener('change', (event) => {
+            state.motoHistoryStart = event.target.value;
+            renderDashboard();
+          });
+        }
+        if (historyEnd) {
+          historyEnd.addEventListener('change', (event) => {
+            state.motoHistoryEnd = event.target.value;
+            renderDashboard();
+          });
+        }
+      }
+
+      function renderAdminView() {
+        const filteredOrders = getFilteredOrders(state.orders, {
+          allyId: state.adminFilterAlly,
+          motoId: state.adminFilterMoto,
+          period: state.adminFilterPeriod,
+          startDate: state.adminFilterStart,
+          endDate: state.adminFilterEnd
+        });
+        const pending = filteredOrders.filter((order) => order.status === 'pendiente').length;
+        const delivered = filteredOrders.filter((order) => order.status === 'entregado').length;
+        const cancelled = filteredOrders.filter((order) => order.status === 'cancelado').length;
+        const totalRevenue = filteredOrders.filter((order) => order.status === 'entregado').reduce((sum, order) => sum + order.price * 0.6, 0);
+        const allies = state.users.filter((user) => user.role === 'aliado');
+        const motorizados = state.users.filter((user) => user.role === 'motorizado');
+        const users = state.users.filter((user) => user.role !== 'admin' || user.id === state.currentUser.id);
+        return `
+          <div class="card">
+            <h2>Panel administrador</h2>
+            <div class="stats-grid">
+              <div class="stat"><div class="value">${filteredOrders.length}</div><div>Pedidos filtrados</div></div>
+              <div class="stat"><div class="value">${pending}</div><div>Pendientes</div></div>
+              <div class="stat"><div class="value">${delivered}</div><div>Entregados</div></div>
+              <div class="stat"><div class="value">${formatCurrency(totalRevenue)}</div><div>Ingresos</div></div>
+            </div>
+            <h3>Filtros del historial</h3>
+            <div class="pill-row">
+              <label>Aliado<select id="adminAllyFilter">
+                <option value="all" ${state.adminFilterAlly === 'all' ? 'selected' : ''}>Todos</option>
+                ${allies.map((user) => `<option value="${user.id}" ${state.adminFilterAlly === user.id ? 'selected' : ''}>${user.commerceName || user.name}</option>`).join('')}
+              </select></label>
+              <label>Motorizado<select id="adminMotoFilter">
+                <option value="all" ${state.adminFilterMoto === 'all' ? 'selected' : ''}>Todos</option>
+                ${motorizados.map((user) => `<option value="${user.id}" ${state.adminFilterMoto === user.id ? 'selected' : ''}>${user.name}</option>`).join('')}
+              </select></label>
+              <label>Periodo<select id="adminPeriodFilter">
+                <option value="all" ${state.adminFilterPeriod === 'all' ? 'selected' : ''}>Todo</option>
+                <option value="day" ${state.adminFilterPeriod === 'day' ? 'selected' : ''}>Día</option>
+                <option value="week" ${state.adminFilterPeriod === 'week' ? 'selected' : ''}>Semana</option>
+                <option value="month" ${state.adminFilterPeriod === 'month' ? 'selected' : ''}>Mes</option>
+                <option value="custom" ${state.adminFilterPeriod === 'custom' ? 'selected' : ''}>Rango</option>
+              </select></label>
+              <label>Desde<input type="date" id="adminStartDate" value="${state.adminFilterStart || ''}" /></label>
+              <label>Hasta<input type="date" id="adminEndDate" value="${state.adminFilterEnd || ''}" /></label>
+            </div>
+            <h3>Asignar rol</h3>
+            <form id="roleForm">
+              <label>Usuario<select id="roleUserSelect">${users.map((user) => `<option value="${user.id}">${user.name} (${user.email})</option>`).join('')}</select></label>
+              <label>Rol<select id="roleSelect"><option value="aliado">Aliado</option><option value="motorizado">Motorizado</option><option value="admin">Administrador</option><option value="pending">Pendiente</option></select></label>
+              <button class="btn-primary" type="submit">Guardar rol</button>
+            </form>
+            <h3>Asignar motorizados a comercio</h3>
+            <form id="assignmentForm">
+              <label>Comercio<select id="assignmentAlly">${allies.map((user) => `<option value="${user.id}">${user.commerceName || user.name}</option>`).join('')}</select></label>
+              <label>Motorizado<select id="assignmentMoto" multiple size="4">${motorizados.map((user) => `<option value="${user.id}">${user.name}</option>`).join('')}</select></label>
+              <button class="btn-primary" type="submit">Guardar asignación</button>
+            </form>
+            <div class="order-list" style="margin-top: 16px;">
+              ${(Object.entries(state.assignments).length ? Object.entries(state.assignments).map(([allyId, motoIds]) => `<div class="order-card"><strong>${getUserName(allyId)}</strong> → ${motoIds.map((id) => getUserName(id)).join(', ')}</div>`).join('') : '<div class="order-card"><p class="muted">No hay asignaciones.</p></div>')}
+            </div>
+            <h3 style="margin-top: 16px;">Historial completo</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Comercio</th>
+                  <th>Motorizado</th>
+                  <th>Estado</th>
+                  <th>Precio</th>
+                  <th>Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredOrders.map((order) => `<tr><td>${order.commerceName}</td><td>${order.acceptedBy ? getUserName(order.acceptedBy) : 'Sin asignar'}</td><td>${order.status}</td><td>$${order.price.toFixed(2)}</td><td>${new Date(order.createdAt).toLocaleDateString()}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      function bindAdminActions() {
+        const allySelect = document.getElementById('assignmentAlly');
+        const motoSelect = document.getElementById('assignmentMoto');
+        const allies = state.users.filter((user) => user.role === 'aliado');
+        const motorizados = state.users.filter((user) => user.role === 'motorizado');
+
+        document.getElementById('assignmentForm').addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const allyId = allySelect.value;
+          const selectedMotoIds = Array.from(motoSelect.selectedOptions).map((option) => option.value);
+          state.assignments[allyId] = selectedMotoIds;
+          state.orders.forEach((order) => {
+            if (order.commerceId === allyId) {
+              order.assignedMotoIds = selectedMotoIds;
+            }
+          });
+          await Promise.all(state.orders.filter((order) => order.commerceId === allyId).map((order) => updateOrderInSupabase(order)));
+          persist();
+          renderDashboard();
+          showToast('Asignación guardada.');
+        });
+
+        document.getElementById('roleForm').addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const userId = document.getElementById('roleUserSelect').value;
+          const role = document.getElementById('roleSelect').value;
+          const user = state.users.find((item) => item.id === userId);
+          if (user) {
+            user.role = role === 'pending' ? null : role;
+            await saveUserToSupabase(user);
+            persist();
+            renderDashboard();
+            showToast('Rol actualizado.');
+          }
+        });
+
+        ['adminAllyFilter', 'adminMotoFilter', 'adminPeriodFilter', 'adminStartDate', 'adminEndDate'].forEach((id) => {
+          const element = document.getElementById(id);
+          if (element) {
+            element.addEventListener('change', () => {
+              state.adminFilterAlly = document.getElementById('adminAllyFilter')?.value || 'all';
+              state.adminFilterMoto = document.getElementById('adminMotoFilter')?.value || 'all';
+              state.adminFilterPeriod = document.getElementById('adminPeriodFilter')?.value || 'all';
+              state.adminFilterStart = document.getElementById('adminStartDate')?.value || '';
+              state.adminFilterEnd = document.getElementById('adminEndDate')?.value || '';
+              renderDashboard();
+            });
+          }
+        });
+      }
+
+      function isOrderVisibleToMoto(order) {
+        if (!state.currentUser || state.currentUser.role !== 'motorizado') return false;
+        const assignmentIds = order.assignedMotoIds || [];
+        return assignmentIds.length === 0 || assignmentIds.includes(state.currentUser.id);
+      }
+
+      function getMotoAvailability(userId) {
+        const user = state.users.find((item) => item.id === userId);
+        if (!user) {
+          return { available: true };
+        }
+        const active = state.orders.some((order) => order.acceptedBy === userId && ['aceptado', 'en_camino'].includes(order.status));
+        return { available: active ? false : true, active };
+      }
+
+      function syncMotoAvailability(userId) {
+        const user = state.users.find((item) => item.id === userId);
+        if (!user || user.role !== 'motorizado') return;
+        const active = state.orders.some((order) => order.acceptedBy === userId && ['aceptado', 'en_camino'].includes(order.status));
+        user.available = active ? false : true;
+      }
+
+      function syncAllMotoAvailability() {
+        state.users.filter((user) => user.role === 'motorizado').forEach((user) => syncMotoAvailability(user.id));
+      }
+
+      function getFilteredOrders(orders, { allyId = 'all', motoId = 'all', period = 'all', startDate = '', endDate = '' } = {}) {
+        let filtered = [...orders];
+        if (allyId !== 'all') {
+          filtered = filtered.filter((order) => order.commerceId === allyId);
+        }
+        if (motoId !== 'all') {
+          filtered = filtered.filter((order) => (order.acceptedBy || '') === motoId);
+        }
+        if (period !== 'all' && (period === 'day' || period === 'week' || period === 'month')) {
+          const today = new Date();
+          let start = new Date(today);
+          if (period === 'day') {
+            start.setHours(0, 0, 0, 0);
+          } else if (period === 'week') {
+            const day = start.getDay();
+            const diff = day === 0 ? -6 : 1 - day;
+            start = new Date(start);
+            start.setDate(start.getDate() + diff);
+            start.setHours(0, 0, 0, 0);
+          } else if (period === 'month') {
+            start = new Date(today.getFullYear(), today.getMonth(), 1);
+          }
+          filtered = filtered.filter((order) => {
+            const createdAt = new Date(order.createdAt);
+            return createdAt >= start && createdAt <= today;
+          });
+        }
+        if (period === 'custom' && (startDate || endDate)) {
+          const start = startDate ? new Date(startDate) : null;
+          const end = endDate ? new Date(endDate) : null;
+          filtered = filtered.filter((order) => {
+            const createdAt = new Date(order.createdAt);
+            if (start && createdAt < start) return false;
+            if (end) {
+              const endBoundary = new Date(end);
+              endBoundary.setHours(23, 59, 59, 999);
+              if (createdAt > endBoundary) return false;
+            }
+            return true;
+          });
+        }
+        return filtered;
+      }
+
+      function recordEarning(motoId, amount, orderId) {
+        if (!state.dailyEarnings[motoId]) {
+          state.dailyEarnings[motoId] = [];
+        }
+        const entry = { amount, orderId, date: new Date().toISOString() };
+        state.dailyEarnings[motoId].push(entry);
+        saveEarningToSupabase(motoId, amount, orderId, entry.date);
+      }
+
+      function getEarningsSummary(motoId) {
+        const entries = (state.dailyEarnings[motoId] || []).filter((entry) => {
+          if (state.motoEarningsFilter === 'today') {
+            return isSameDay(entry.date);
+          }
+          if (state.motoEarningsFilter === 'week') {
+            return isSameWeek(entry.date);
+          }
+          if (state.motoEarningsFilter === 'month') {
+            return isSameMonth(entry.date);
+          }
+          return true;
+        });
+        return { total: entries.reduce((sum, entry) => sum + entry.amount, 0), entries };
+      }
+
+      function totalEarnings(motoId) {
+        return getEarningsSummary(motoId).total;
+      }
+
+      function isSameDay(value) {
+        const date = new Date(value);
+        const now = new Date();
+        return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+      }
+
+      function isSameWeek(value) {
+        const date = new Date(value);
+        const now = new Date();
+        const start = new Date(now);
+        start.setDate(now.getDate() - now.getDay());
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(now);
+        end.setHours(23, 59, 59, 999);
+        return date >= start && date <= end;
+      }
+
+      function isSameMonth(value) {
+        const date = new Date(value);
+        const now = new Date();
+        return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+      }
+
+      function formatCurrency(value) {
+        return new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'USD' }).format(value);
+      }
+
+      function getUserName(id) {
+        const user = state.users.find((item) => item.id === id);
+        return user ? user.name : 'Sin asignar';
+      }
+
+      async function saveEarningToSupabase(motoId, amount, orderId, date) {
+        try {
+          await window.__ONDELIVERY__.supabase.from('earnings').insert({
+            moto_id: motoId,
+            amount,
+            order_id: orderId,
+            created_at: date
+          });
+        } catch (error) {
+          console.warn('No se pudo guardar la ganancia en Supabase', error);
+        }
+      }
+
+      async function clearEarningsForMoto(motoId) {
+        try {
+          await window.__ONDELIVERY__.supabase.from('earnings').delete().eq('moto_id', motoId);
+        } catch (error) {
+          console.warn('No se pudieron limpiar las ganancias en Supabase', error);
+        }
+      }
+
+      function persist() {
+        if (state.currentUser) {
+          localStorage.setItem(STORAGE_KEYS.session, state.currentUser.id);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.session);
+        }
+      }
+
+      function persistSession(userId) {
+        localStorage.setItem(STORAGE_KEYS.session, userId);
+      }
+
+      function restoreSession() {
+        const storedSession = localStorage.getItem(STORAGE_KEYS.session);
+        if (!storedSession) return null;
+        return state.users.find((user) => user.id === storedSession) || null;
+      }
+
+      function bindLogout() {
+        const logoutBtn = document.getElementById('logoutBtn');
+        logoutBtn.addEventListener('click', () => {
+          state.currentUser = null;
+          persist();
+          renderAuth();
+          showToast('Sesión cerrada');
+        });
+      }
+
+      async function fetchSupabaseUsers() {
+        const { data, error } = await window.__ONDELIVERY__.supabase.from('users').select('*');
+        if (error) {
+          return [];
+        }
+        return (data || []).map((user) => ({ ...user, password: user.password || '' }));
+      }
+
+      async function fetchSupabaseOrders() {
+        const { data, error } = await window.__ONDELIVERY__.supabase.from('orders').select('*').order('created_at', { ascending: false });
+        if (error) {
+          return [];
+        }
+        return (data || []).map((order) => ({
+          id: order.id,
+          commerceId: order.commerce_id,
+          commerceName: order.commerce_name,
+          recipientName: order.recipient_name,
+          recipientPhone: order.recipient_phone,
+          address: order.address,
+          addressUrl: order.address_url,
+          price: order.price,
+          urgency: order.urgency,
+          description: order.description,
+          status: order.status,
+          createdAt: order.created_at,
+          assignedMotoIds: order.assigned_moto_ids || [],
+          acceptedBy: order.accepted_by,
+          acceptedAt: order.accepted_at
+        }));
+      }
+
+      async function fetchSupabaseEarnings() {
+        try {
+          const { data, error } = await window.__ONDELIVERY__.supabase.from('earnings').select('*').order('created_at', { ascending: true });
+          if (error || !data) {
+            return {};
+          }
+          return data.reduce((accumulator, entry) => {
+            if (!accumulator[entry.moto_id]) {
+              accumulator[entry.moto_id] = [];
+            }
+            accumulator[entry.moto_id].push({ amount: entry.amount, orderId: entry.order_id, date: entry.created_at });
+            return accumulator;
+          }, {});
+        } catch (error) {
+          console.warn('No se pudieron cargar las ganancias', error);
+          return {};
+        }
+      }
+
+      function showToast(message) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(showToast.timeout);
+        showToast.timeout = setTimeout(() => toast.classList.remove('show'), 2200);
+      }
+
+      function registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('./sw.js').catch((error) => console.warn('SW error', error));
+        }
+      }
+    </script>
+  </body>
+</html>

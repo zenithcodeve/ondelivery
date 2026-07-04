@@ -1,0 +1,9 @@
+{
+  "name": "On Delivery",
+  "short_name": "OnDelivery",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#d62828",
+  "description": "PWA para recepción y gestión de pedidos"
+}
