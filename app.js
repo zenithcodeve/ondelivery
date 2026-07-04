@@ -8,7 +8,8 @@ let deferredPrompt = null;
 let currentUser = null;
 let currentProfile = null;
 let motorOn = true;
-let lastAvailableOrders = [];
+let ordersChannel = null;
+let realtimePollInterval = null;
 let earningsResetAt = localStorage.getItem('earningsResetAt');
 
 const elements = {
@@ -26,6 +27,7 @@ const elements = {
   fullNameInput: document.getElementById('full-name'),
   btnLogout: document.getElementById('btn-logout'),
   btnInstall: document.getElementById('btn-install'),
+  installHint: document.getElementById('install-hint'),
   aliadoView: document.getElementById('aliado-view'),
   aliadoRoleLabel: document.getElementById('aliado-role-label'),
   aliadoPendingList: document.getElementById('aliado-pending-list'),
@@ -168,17 +170,20 @@ async function routeByRole() {
     elements.aliadoRoleLabel.textContent = currentProfile.business_name ? currentProfile.business_name : currentProfile.email;
     showSection(elements.aliadoView);
     await refreshAliadoView();
+    await setupRealtimeSubscriptions();
     return;
   }
   if (currentProfile.role === 'motorizado') {
     showSection(elements.motorView);
     updateMotorStatus();
     await refreshMotorView();
+    await setupRealtimeSubscriptions();
     return;
   }
   if (currentProfile.role === 'admin') {
     showSection(elements.adminView);
     await refreshAdminView();
+    await setupRealtimeSubscriptions();
     return;
   }
   showSection(elements.noRoleSection);
@@ -242,6 +247,14 @@ async function signUpUser(event) {
 }
 
 async function signOutUser() {
+  if (ordersChannel) {
+    await ordersChannel.unsubscribe();
+    ordersChannel = null;
+  }
+  if (realtimePollInterval) {
+    clearInterval(realtimePollInterval);
+    realtimePollInterval = null;
+  }
   await supabase.auth.signOut();
   currentUser = null;
   currentProfile = null;
@@ -333,10 +346,6 @@ async function loadAvailableOrders() {
   if (error) return console.error(error);
   const list = data || [];
   elements.availableOrdersList.innerHTML = list.length ? list.map(order => availableOrderHtml(order)).join('') : '<p class="note">No hay pedidos disponibles.</p>';
-  if (list.length && list.length !== lastAvailableOrders.length) {
-    notifyNewOrder();
-  }
-  lastAvailableOrders = list;
 }
 
 function availableOrderHtml(order) {
@@ -549,6 +558,70 @@ async function notifyNewOrder() {
   }
 }
 
+function startRealtimePoll() {
+  if (realtimePollInterval) clearInterval(realtimePollInterval);
+  realtimePollInterval = setInterval(async () => {
+    if (!currentProfile) return;
+    if (currentProfile.role === 'motorizado') {
+      await loadAvailableOrders();
+      await refreshMotorView();
+    }
+    if (currentProfile.role === 'aliado') {
+      await loadAliadoOrders();
+    }
+    if (currentProfile.role === 'admin') {
+      await loadAdminMetrics();
+      await loadAdminOrders();
+    }
+  }, 8000);
+}
+
+function stopRealtimePoll() {
+  if (realtimePollInterval) {
+    clearInterval(realtimePollInterval);
+    realtimePollInterval = null;
+  }
+}
+
+async function setupRealtimeSubscriptions() {
+  if (!currentUser || !currentProfile) return;
+  if (ordersChannel) {
+    await ordersChannel.unsubscribe();
+    ordersChannel = null;
+  }
+  ordersChannel = supabase.channel('orders-channel');
+  ordersChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
+    if (currentProfile.role === 'motorizado') {
+      const order = payload.new;
+      if (order.status === 'pending' && (!currentProfile.assigned_commerce || order.commerce_name === currentProfile.assigned_commerce)) {
+        loadAvailableOrders();
+        notifyNewOrder();
+      }
+    }
+    if (currentProfile.role === 'aliado' && payload.new.commerce_id === currentProfile.id) {
+      loadAliadoOrders();
+    }
+    if (currentProfile.role === 'admin') {
+      loadAdminMetrics();
+      loadAdminOrders();
+    }
+  }).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
+    if (currentProfile.role === 'motorizado') {
+      loadAvailableOrders();
+      refreshMotorView();
+    }
+    if (currentProfile.role === 'aliado' && payload.new.commerce_id === currentProfile.id) {
+      loadAliadoOrders();
+    }
+    if (currentProfile.role === 'admin') {
+      loadAdminMetrics();
+      loadAdminOrders();
+    }
+  });
+  await ordersChannel.subscribe();
+  startRealtimePoll();
+}
+
 async function requestNotificationPermission() {
   if (!('Notification' in window)) return;
   if (Notification.permission === 'default') {
@@ -558,7 +631,8 @@ async function requestNotificationPermission() {
 
 async function installApp() {
   if (!deferredPrompt) {
-    alert('Usa la opción de instalar de tu navegador.');
+    setStatus('No se puede iniciar la instalación automática ahora. Usa el menú del navegador para instalar o actualizar esta página.', 'Atención', false);
+    elements.installHint.classList.remove('hidden');
     return;
   }
   deferredPrompt.prompt();
@@ -566,8 +640,11 @@ async function installApp() {
   deferredPrompt = null;
   if (choiceResult.outcome === 'accepted') {
     setStatus('App instalada en el escritorio.', 'Éxito');
+    elements.btnInstall.classList.add('hidden');
+    elements.installHint.classList.add('hidden');
   } else {
     setStatus('Instalación cancelada.', 'Atención', false);
+    elements.installHint.classList.remove('hidden');
   }
 }
 
@@ -586,6 +663,12 @@ window.addEventListener('beforeinstallprompt', event => {
   event.preventDefault();
   deferredPrompt = event;
   elements.btnInstall.classList.remove('hidden');
+  elements.installHint.classList.remove('hidden');
+});
+
+window.addEventListener('appinstalled', () => {
+  elements.btnInstall.classList.add('hidden');
+  elements.installHint.classList.add('hidden');
 });
 
 elements.authForm.addEventListener('submit', event => {
