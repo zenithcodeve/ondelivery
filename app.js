@@ -60,6 +60,10 @@ const elements = {
   adminCommerceName: document.getElementById('admin-commerce-name'),
   btnAssignCommerce: document.getElementById('btn-assign-commerce'),
   adminOrderFilter: document.getElementById('admin-order-filter'),
+  btnExportAliado: document.getElementById('btn-export-aliado'),
+  btnExportAdmin: document.getElementById('btn-export-admin'),
+  btnExportAliado: document.getElementById('btn-export-aliado'),
+  btnExportAdmin: document.getElementById('btn-export-admin'),
   adminStartDate: document.getElementById('admin-start-date'),
   adminEndDate: document.getElementById('admin-end-date'),
   adminFilterUser: document.getElementById('admin-filter-user'),
@@ -274,9 +278,9 @@ async function loadAliadoOrders() {
   if (!currentProfile) return;
   const { data, error } = await supabase.from('orders').select('*').eq('commerce_id', currentProfile.id).order('created_at', { ascending: false });
   if (error) return console.error(error);
-  const pending = data.filter(order => ['pending','assigned','reopened'].includes(order.status));
+  const pending = data.filter(order => ['pending','assigned'].includes(order.status));
   const onWay = data.filter(order => order.status === 'on_way');
-  const delivered = data.filter(order => order.status === 'delivered' || order.status === 'reopened');
+  const delivered = data.filter(order => order.status === 'delivered');
   elements.aliadoPendingList.innerHTML = pending.length ? pending.map(orderCardHtml).join('') : '<p class="note">No hay pedidos pendientes.</p>';
   elements.aliadoOnwayList.innerHTML = onWay.length ? onWay.map(orderCardHtml).join('') : '<p class="note">No hay pedidos en camino.</p>';
   elements.aliadoDeliveredList.innerHTML = delivered.length ? delivered.map(orderCardHtml).join('') : '<p class="note">No hay pedidos entregados.</p>';
@@ -287,7 +291,7 @@ function orderCardHtml(order) {
   const stage = order.status === 'pending' ? 'Pendiente' : order.status === 'assigned' ? 'Aceptado' : order.status === 'on_way' ? 'En camino' : order.status === 'delivered' ? 'Entregado' : order.status === 'reopened' ? 'Reabierto' : order.status;
   const urgent = order.urgent ? 'Urgente' : 'Normal';
   const price = order.price ? `$${order.price}` : 'Sin precio';
-  const charge = order.status === 'delivered' ? `<div class="order-actions"><button class="btn secondary small" type="button" data-action="reopen" data-id="${order.id}">Reabrir pedido</button></div>` : '';
+  const charge = '';
   const mapLink = order.delivery_url ? `<a href="${order.delivery_url}" target="_blank" rel="noopener">Abrir ruta</a>` : '';
   return `<div class="order-card">
     <div class="order-row"><h4>Pedido #${order.id || ''}</h4><span>${stage}</span></div>
@@ -316,9 +320,6 @@ function orderCardHtmlMotor(order) {
   }
   if (order.status === 'on_way') {
     buttons.push(`<button class="btn primary small" type="button" data-action="delivered" data-id="${order.id}">Pedido entregado</button>`);
-  }
-  if (order.status === 'delivered') {
-    buttons.push(`<button class="btn secondary small" type="button" data-action="reopen" data-id="${order.id}">Reabrir pedido</button>`);
   }
   const actionHtml = buttons.length ? `<div class="order-actions">${buttons.join('')}</div>` : '';
   return `<div class="order-card">
@@ -399,7 +400,7 @@ async function loadAdminMetrics() {
   const { data, error } = await supabase.from('orders').select('*');
   if (error) return console.error(error);
   const total = data.length;
-  const active = data.filter(order => ['pending','assigned','on_way','reopened'].includes(order.status)).length;
+  const active = data.filter(order => ['pending','assigned','on_way'].includes(order.status)).length;
   const delivered = data.filter(order => order.status === 'delivered').length;
   const earnings = data.reduce((sum, order) => sum + ((order.status === 'delivered' ? order.price : 0) || 0) * 0.6, 0);
   elements.adminTotalOrders.textContent = total;
@@ -423,6 +424,112 @@ async function loadAdminOrders() {
   if (error) return console.error(error);
   const filtered = filterText ? data.filter(order => [order.assigned_to, order.commerce_name, order.requested_by_name, order.delivery_name].some(value => value?.toLowerCase().includes(filterText.toLowerCase()))) : data;
   elements.adminOrdersList.innerHTML = filtered.length ? filtered.map(orderCardHtml).join('') : '<p class="note">No hay pedidos para este filtro.</p>';
+}
+
+function getOrderDuration(order) {
+  if (!order.started_at || !order.delivered_at) return '';
+  const start = new Date(order.started_at);
+  const end = new Date(order.delivered_at);
+  const elapsed = end - start;
+  if (elapsed <= 0) return '';
+  const seconds = Math.floor(elapsed / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  const remainingSeconds = seconds % 60;
+  let result = '';
+  if (hours) result += `${hours}h `;
+  if (remainingMinutes || hours) result += `${remainingMinutes}m `;
+  result += `${remainingSeconds}s`;
+  return result.trim();
+}
+
+function buildOrdersXlsTable(orders) {
+  const rows = orders.map(order => {
+    const duration = getOrderDuration(order);
+    return `
+      <tr>
+        <td>${order.id || ''}</td>
+        <td>${order.status || ''}</td>
+        <td>${order.commerce_name || ''}</td>
+        <td>${order.requested_by_name || ''}</td>
+        <td>${order.assigned_to || ''}</td>
+        <td>${order.delivery_name || ''}</td>
+        <td>${order.delivery_phone || ''}</td>
+        <td>${order.delivery_address || ''}</td>
+        <td>${order.delivery_url || ''}</td>
+        <td>${order.price != null ? order.price : ''}</td>
+        <td>${order.urgent ? 'Sí' : 'No'}</td>
+        <td>${order.started_at || ''}</td>
+        <td>${order.delivered_at || ''}</td>
+        <td>${duration}</td>
+        <td>${order.created_at || ''}</td>
+        <td>${order.updated_at || ''}</td>
+        <td>${order.description || ''}</td>
+      </tr>`;
+  }).join('');
+
+  const total = orders.reduce((sum, order) => sum + (parseFloat(order.price) || 0), 0);
+  return `
+    <table>
+      <tr>
+        <th>ID</th>
+        <th>Estado</th>
+        <th>Comercio</th>
+        <th>Solicitante</th>
+        <th>Motorizado</th>
+        <th>Receptor</th>
+        <th>Teléfono</th>
+        <th>Dirección</th>
+        <th>URL</th>
+        <th>Precio USD</th>
+        <th>Urgente</th>
+        <th>Inicio</th>
+        <th>Entrega</th>
+        <th>Duración</th>
+        <th>Creado</th>
+        <th>Actualizado</th>
+        <th>Descripción</th>
+      </tr>
+      ${rows}
+      <tr>
+        <td colspan="9"><strong>Total USD</strong></td>
+        <td><strong>${total.toFixed(2)}</strong></td>
+        <td colspan="7"></td>
+      </tr>
+    </table>`;
+}
+
+function downloadXls(filename, tableHtml) {
+  const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+async function exportAliadoOrders() {
+  if (!currentProfile) return;
+  const { data, error } = await supabase.from('orders').select('*').eq('commerce_id', currentProfile.id).order('created_at', { ascending: false });
+  if (error) return setStatus('No se pudo exportar los pedidos del aliado.', 'Error', false);
+  const table = buildOrdersXlsTable(data || []);
+  downloadXls(`pedidos-aliado-${currentProfile.id}.xls`, table);
+}
+
+async function exportAdminOrders() {
+  const range = getFilterRange(elements.adminOrderFilter.value, elements.adminStartDate.value, elements.adminEndDate.value);
+  let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
+  if (range) query = query.gte('created_at', range.start).lte('created_at', range.end);
+  const filterText = elements.adminFilterUser.value.trim();
+  const { data, error } = await query;
+  if (error) return setStatus('No se pudo exportar los pedidos de admin.', 'Error', false);
+  const orders = filterText ? data.filter(order => [order.assigned_to, order.commerce_name, order.requested_by_name, order.delivery_name].some(value => value?.toLowerCase().includes(filterText.toLowerCase()))) : data;
+  const table = buildOrdersXlsTable(orders || []);
+  downloadXls('pedidos-admin.xls', table);
 }
 
 function getFilterRange(value, startDate, endDate) {
@@ -465,7 +572,6 @@ async function handleOrderAction(event) {
   if (action === 'to-way') return updateOrderStatus(id, 'on_way');
   if (action === 'delivered') return updateOrderStatus(id, 'delivered');
   if (action === 'cancel') return updateOrderStatus(id, 'canceled');
-  if (action === 'reopen') return updateOrderStatus(id, 'reopened');
 }
 
 async function acceptOrder(orderId) {
@@ -480,7 +586,6 @@ async function updateOrderStatus(orderId, nextStatus) {
   const updateData = { status: nextStatus, updated_at: new Date().toISOString() };
   if (nextStatus === 'on_way') updateData.started_at = new Date().toISOString();
   if (nextStatus === 'delivered') updateData.delivered_at = new Date().toISOString();
-  if (nextStatus === 'reopened') updateData.reopened_at = new Date().toISOString();
   const { error } = await supabase.from('orders').update(updateData).eq('id', orderId);
   if (error) return setStatus('Error al actualizar el pedido.', 'Error', false);
   setStatus('Pedido actualizado con éxito.', 'Éxito');
@@ -697,6 +802,8 @@ elements.btnResetEarnings.addEventListener('click', () => {
 });
 elements.btnAdminFilter.addEventListener('click', loadAdminOrders);
 elements.btnAssignCommerce.addEventListener('click', assignCommerce);
+elements.btnExportAliado.addEventListener('click', exportAliadoOrders);
+elements.btnExportAdmin.addEventListener('click', exportAdminOrders);
 
 setTabBehavior();
 renderPriceOptions();

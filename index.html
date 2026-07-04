@@ -46,7 +46,7 @@
       </section>
 
       <section id="aliado-view" class="card hidden">
-        <div class="section-header"><h2>Aliado</h2><span id="aliado-role-label"></span></div>
+        <div class="section-header"><h2>Aliado</h2><span id="aliado-role-label"></span><button id="btn-export-aliado" class="btn secondary small">Exportar pedidos .xls</button></div>
         <div class="tab-row" id="aliado-tabs">
           <button class="tab-btn active" data-target="aliado-pending">Pedidos pendientes</button>
           <button class="tab-btn" data-target="aliado-onway">Pedidos en camino</button>
@@ -151,7 +151,7 @@
           <button id="btn-assign-commerce" class="btn primary">Asignar comercio</button>
         </div>
         <div class="card small-card">
-          <h3>Historial de pedidos</h3>
+          <div class="section-header"><h3>Historial de pedidos</h3><button id="btn-export-admin" class="btn secondary small">Exportar pedidos .xls</button></div>
           <div class="filter-row">
             <label>Filtrar por:</label>
             <select id="admin-order-filter"><option value="day">Día</option><option value="week">Semana</option><option value="month">Mes</option><option value="range">Rango</option></select>
