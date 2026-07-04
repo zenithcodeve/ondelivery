@@ -9,6 +9,43 @@ audioAlarm.volume = 0.8;
 let soundEnabled = localStorage.getItem('soundEnabled');
 if (soundEnabled === null) soundEnabled = 'true';
 soundEnabled = soundEnabled === 'true';
+let audioCtx = null;
+
+function getAudioContext() {
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (err) {
+      console.debug('AudioContext not available', err);
+      audioCtx = null;
+    }
+  }
+  return audioCtx;
+}
+
+function playBeep(duration = 300, freq = 880, vol = 0.25) {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    g.gain.value = vol;
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+    setTimeout(() => {
+      try { o.stop(); } catch (e) {}
+      try { o.disconnect(); } catch (e) {}
+      try { g.disconnect(); } catch (e) {}
+    }, duration + 80);
+  } catch (err) {
+    console.debug('playBeep failed', err);
+  }
+}
 let deferredPrompt = null;
 let currentUser = null;
 let currentProfile = null;
@@ -691,7 +728,8 @@ async function notifyNewOrder() {
       try {
         await audioAlarm.play();
       } catch (err) {
-        console.debug('Audio play failed:', err);
+        console.debug('audioAlarm.play() failed, falling back to WebAudio beep', err);
+        playBeep();
       }
     }
   } catch (error) {
@@ -873,8 +911,9 @@ if (elements.btnTestSound) {
     try {
       await audioAlarm.play();
     } catch (err) {
-      console.debug('Test audio play failed:', err);
-      setStatus('Haz interactuado: el navegador puede bloquear reproducción automática hasta que haya interacción.', 'Atención', false);
+      console.debug('Test audio play failed, trying WebAudio beep fallback:', err);
+      try { playBeep(); } catch (e) { console.debug('Fallback beep failed', e); }
+      setStatus('Si no se escuchó el archivo, se intentó un beep de respaldo.', 'Atención');
     }
   });
 }
