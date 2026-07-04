@@ -62,6 +62,9 @@ const elements = {
   adminOrderFilter: document.getElementById('admin-order-filter'),
   btnExportAliado: document.getElementById('btn-export-aliado'),
   btnExportAdmin: document.getElementById('btn-export-admin'),
+  aliadoOrderFilter: document.getElementById('aliado-order-filter'),
+  aliadoStartDate: document.getElementById('aliado-start-date'),
+  aliadoEndDate: document.getElementById('aliado-end-date'),
   btnExportAliado: document.getElementById('btn-export-aliado'),
   btnExportAdmin: document.getElementById('btn-export-admin'),
   adminStartDate: document.getElementById('admin-start-date'),
@@ -340,7 +343,9 @@ function orderCardHtmlMotor(order) {
 async function loadAvailableOrders() {
   if (!currentProfile) return;
   let query = supabase.from('orders').select('*').eq('status', 'pending').is('assigned_to_id', null).order('created_at', { ascending: false });
-  if (currentProfile.assigned_commerce) {
+  if (currentProfile.assigned_commerce_id) {
+    query = query.eq('commerce_id', currentProfile.assigned_commerce_id);
+  } else if (currentProfile.assigned_commerce) {
     query = query.eq('commerce_name', currentProfile.assigned_commerce);
   }
   const { data, error } = await query;
@@ -410,9 +415,12 @@ async function loadAdminMetrics() {
 }
 
 async function loadMotoristasForAdmin() {
-  const { data, error } = await supabase.from('profiles').select('id,full_name,email,assigned_commerce').eq('role','motorizado');
+  const { data, error } = await supabase.from('profiles').select('id,full_name,email,assigned_commerce,assigned_commerce_id').eq('role','motorizado');
   if (error) return console.error(error);
-  elements.adminMotoristaSelect.innerHTML = data.map(user => `<option value="${user.id}">${user.full_name || user.email}${user.assigned_commerce ? ' — ' + user.assigned_commerce : ''}</option>`).join('');
+  elements.adminMotoristaSelect.innerHTML = data.map(user => {
+    const commerceLabel = user.assigned_commerce || (user.assigned_commerce_id ? 'Comercio asignado' : 'Sin comercio');
+    return `<option value="${user.id}">${user.full_name || user.email}${commerceLabel ? ' — ' + commerceLabel : ''}</option>`;
+  }).join('');
 }
 
 async function loadAdminOrders() {
@@ -514,10 +522,14 @@ function downloadXls(filename, tableHtml) {
 
 async function exportAliadoOrders() {
   if (!currentProfile) return;
-  const { data, error } = await supabase.from('orders').select('*').eq('commerce_id', currentProfile.id).order('created_at', { ascending: false });
+  const range = getFilterRange(elements.aliadoOrderFilter?.value || 'all', elements.aliadoStartDate?.value, elements.aliadoEndDate?.value);
+  let query = supabase.from('orders').select('*').eq('commerce_id', currentProfile.id).order('created_at', { ascending: false });
+  if (range) query = query.gte('created_at', range.start).lte('created_at', range.end);
+  const { data, error } = await query;
   if (error) return setStatus('No se pudo exportar los pedidos del aliado.', 'Error', false);
   const table = buildOrdersXlsTable(data || []);
-  downloadXls(`pedidos-aliado-${currentProfile.id}.xls`, table);
+  const filename = range ? `pedidos-aliado-${currentProfile.id}-${elements.aliadoOrderFilter.value}.xls` : `pedidos-aliado-${currentProfile.id}.xls`;
+  downloadXls(filename, table);
 }
 
 async function exportAdminOrders() {
@@ -646,7 +658,18 @@ async function assignCommerce() {
   const motoristaId = elements.adminMotoristaSelect.value;
   const commerceName = elements.adminCommerceName.value.trim();
   if (!motoristaId || !commerceName) return setStatus('Selecciona el motorizado y nombre del comercio.', 'Error', false);
-  const { error } = await supabase.from('profiles').update({ assigned_commerce: commerceName }).eq('id', motoristaId);
+
+  const { data: commerceProfiles, error: commerceError } = await supabase.from('profiles').select('id,business_name,email').or(`business_name.eq.${commerceName},email.eq.${commerceName}`).eq('role','aliado').limit(1);
+  if (commerceError) return setStatus('Error al buscar el comercio.', 'Error', false);
+
+  const updateData = { assigned_commerce: commerceName };
+  if (commerceProfiles?.length) {
+    updateData.assigned_commerce_id = commerceProfiles[0].id;
+  } else {
+    updateData.assigned_commerce_id = null;
+  }
+
+  const { error } = await supabase.from('profiles').update(updateData).eq('id', motoristaId);
   if (error) return setStatus('No fue posible asignar el comercio.', 'Error', false);
   setStatus(`Motorizado asignado a ${commerceName}.`, 'Éxito');
   await loadMotoristasForAdmin();
@@ -655,7 +678,7 @@ async function assignCommerce() {
 async function notifyNewOrder() {
   try {
     if (Notification.permission === 'granted') {
-      new Notification('On Delivery', { body: 'Ha llegado un nuevo pedido disponible.', icon: 'icons/icon-192.png' });
+      new Notification('On Delivery', { body: 'Ha llegado un nuevo pedido disponible.', icon: 'icon-192.png' });
     }
     await audioAlarm.play();
   } catch (error) {
@@ -696,21 +719,29 @@ async function setupRealtimeSubscriptions() {
   }
   ordersChannel = supabase.channel('orders-channel');
   ordersChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
+    console.debug('Realtime INSERT payload received', payload);
+    if (!currentProfile) return;
     if (currentProfile.role === 'motorizado') {
       const order = payload.new;
-      if (order.status === 'pending' && (!currentProfile.assigned_commerce || order.commerce_name === currentProfile.assigned_commerce)) {
+      const isAssignedCommerce = currentProfile.assigned_commerce_id ? order.commerce_id === currentProfile.assigned_commerce_id : !currentProfile.assigned_commerce || order.commerce_name === currentProfile.assigned_commerce;
+      if (order.status === 'pending' && isAssignedCommerce) {
+        console.debug('New available order for motorizado, reloading list', order.id);
         loadAvailableOrders();
         notifyNewOrder();
       }
     }
     if (currentProfile.role === 'aliado' && payload.new.commerce_id === currentProfile.id) {
+      console.debug('New order for aliado, reloading aliado view', payload.new.id);
       loadAliadoOrders();
     }
     if (currentProfile.role === 'admin') {
+      console.debug('New order for admin, refreshing metrics');
       loadAdminMetrics();
       loadAdminOrders();
     }
   }).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
+    console.debug('Realtime UPDATE payload received', payload);
+    if (!currentProfile) return;
     if (currentProfile.role === 'motorizado') {
       loadAvailableOrders();
       refreshMotorView();
@@ -722,8 +753,12 @@ async function setupRealtimeSubscriptions() {
       loadAdminMetrics();
       loadAdminOrders();
     }
+  }).on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
+    // generic logger to help diagnose missing events
+    console.debug('Realtime any-event payload', payload);
   });
   await ordersChannel.subscribe();
+  console.debug('Subscribed to orders-channel');
   startRealtimePoll();
 }
 
@@ -793,6 +828,9 @@ elements.btnToggleStatus.addEventListener('click', () => {
 });
 elements.motorHistoryFilter.addEventListener('change', () => setFilterInputsVisibility(elements.motorHistoryFilter, elements.motorStartDate, elements.motorEndDate));
 elements.adminOrderFilter.addEventListener('change', () => setFilterInputsVisibility(elements.adminOrderFilter, elements.adminStartDate, elements.adminEndDate));
+if (elements.aliadoOrderFilter) {
+  elements.aliadoOrderFilter.addEventListener('change', () => setFilterInputsVisibility(elements.aliadoOrderFilter, elements.aliadoStartDate, elements.aliadoEndDate));
+}
 elements.btnMotorFilter.addEventListener('click', loadMotorHistory);
 elements.btnResetEarnings.addEventListener('click', () => {
   earningsResetAt = new Date().toISOString();

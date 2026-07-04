@@ -9,6 +9,7 @@ create table if not exists public.profiles (
   role text check (role in ('aliado', 'motorizado', 'admin')),
   business_name text,
   assigned_commerce text,
+  assigned_commerce_id uuid references public.profiles(id) on delete set null,
   active_order boolean default false,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
