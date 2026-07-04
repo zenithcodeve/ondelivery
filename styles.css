@@ -64,8 +64,8 @@ main { display: grid; gap: 18px; }
 .small-card { background: #fafafa; }
 .price-grid { display: grid; gap: 10px; }
 .price-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 10px; }
-.price-chip { border: 1px solid #ddd; border-radius: 12px; padding: 10px; background: #fff; text-align: center; cursor: pointer; }
-.price-chip.active { border-color: var(--accent); background: rgba(214,10,10,.08); }
+.price-chip { border: 1px solid #ddd; border-radius: 12px; padding: 10px; background: #fff; color: #111111; text-align: center; cursor: pointer; }
+.price-chip.active { border-color: var(--accent); background: rgba(214,10,10,.08); color: #111111; }
 .earnings-box { margin-top: 18px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; }
 @media (max-width: 760px) {
   .topbar { flex-direction: column; align-items: flex-start; }
