@@ -21,6 +21,7 @@
         <button id="btn-install" class="btn small">Instalar app</button>
         <button id="btn-test-sound" class="btn small secondary">Probar sonido</button>
         <button id="btn-sound-toggle" class="btn small">🔔 Sonido</button>
+        <button id="btn-enable-notifications" class="btn small secondary">Activar notificaciones</button>
         <button id="btn-logout" class="btn small secondary hidden">Cerrar sesión</button>
       </div>
       <p id="install-hint" class="small hidden">Si no puedes instalar desde el botón, usa el menú del navegador y selecciona "Agregar a la pantalla principal" o "Instalar".</p>
@@ -169,9 +170,13 @@
           <div id="admin-metrics-summary" class="metrics-list"></div>
         </div>
         <div class="card small-card">
+          <h3>Motorizados activos</h3>
+          <div id="admin-active-motorists" class="list-box"></div>
+        </div>
+        <div class="card small-card">
           <h3>Asignar motorizado a comercio</h3>
-          <div class="field"><label for="admin-motorista-select">Motorizado</label><select id="admin-motorista-select"></select></div>
-          <div class="field"><label for="admin-commerce-name">Nombre del local</label><input id="admin-commerce-name" type="text" placeholder="Nombre del local"></div>
+          <div class="field"><label for="admin-motorista-select">Motorizado</label><select id="admin-motorista-select"><option value="">No hay motorizados registrados</option></select></div>
+          <div class="field"><label for="admin-commerce-select">Nombre del local</label><select id="admin-commerce-select"><option value="">Selecciona un aliado</option></select></div>
           <button id="btn-assign-commerce" class="btn primary">Asignar comercio</button>
         </div>
         <div class="card small-card">

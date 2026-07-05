@@ -72,6 +72,7 @@ let realtimePollInterval = null;
 let earningsResetAt = localStorage.getItem('earningsResetAt');
 let lastPendingOrderIds = [];
 let pendingPhotoOrderId = null;
+let alertedPendingOrderIds = new Set();
 
 const elements = {
   authSection: document.getElementById('auth-section'),
@@ -120,8 +121,9 @@ const elements = {
   adminDeliveredCount: document.getElementById('admin-delivered-count'),
   adminEarnings: document.getElementById('admin-earnings'),
   adminMotoristaSelect: document.getElementById('admin-motorista-select'),
-  adminCommerceName: document.getElementById('admin-commerce-name'),
+  adminCommerceSelect: document.getElementById('admin-commerce-select'),
   adminMetricsSummary: document.getElementById('admin-metrics-summary'),
+  adminActiveMotorists: document.getElementById('admin-active-motorists'),
   btnAssignCommerce: document.getElementById('btn-assign-commerce'),
   adminOrderFilter: document.getElementById('admin-order-filter'),
   btnExportAliado: document.getElementById('btn-export-aliado'),
@@ -131,6 +133,7 @@ const elements = {
   aliadoEndDate: document.getElementById('aliado-end-date'),
   btnTestSound: document.getElementById('btn-test-sound'),
   btnSoundToggle: document.getElementById('btn-sound-toggle'),
+  btnEnableNotifications: document.getElementById('btn-enable-notifications'),
   btnExportAliado: document.getElementById('btn-export-aliado'),
   btnExportAdmin: document.getElementById('btn-export-admin'),
   adminStartDate: document.getElementById('admin-start-date'),
@@ -294,6 +297,7 @@ async function refreshAdminView() {
   await Promise.all([
     loadAdminMetrics(),
     loadMotoristasForAdmin(),
+    loadAliadosForAdmin(),
     loadAdminOrders(),
   ]);
 }
@@ -364,7 +368,7 @@ async function loadAliadoOrders() {
 
 function orderCardHtml(order) {
   const assigned = order.assigned_to || 'Sin motorizado aún';
-  const stage = order.status === 'pending' ? 'Pendiente' : order.status === 'assigned' ? 'Aceptado' : order.status === 'on_way' ? 'En camino' : order.status === 'delivered' ? 'Entregado' : order.status === 'reopened' ? 'Reabierto' : order.status;
+  const stage = order.status === 'pending' ? 'Pendiente' : order.status === 'assigned' ? 'Aceptado' : order.status === 'on_way' ? 'En camino' : order.status === 'delivered' ? 'Entregado' : order.status === 'client_absent' ? 'Cliente ausente' : order.status === 'reopened' ? 'Reabierto' : order.status;
   const urgent = order.urgent ? 'Urgente' : 'Normal';
   const price = order.price ? `$${order.price}` : 'Sin precio';
   const charge = '';
@@ -396,14 +400,16 @@ function orderCardHtmlMotor(order) {
   if (order.status === 'assigned') {
     buttons.push(`<button class="btn primary small" type="button" data-action="to-way" data-id="${order.id}">Pedido en camino</button>`);
     buttons.push(`<button class="btn secondary small" type="button" data-action="delivered" data-id="${order.id}">Pedido entregado</button>`);
+    buttons.push(`<button class="btn small" type="button" data-action="client-absent" data-id="${order.id}">Cliente ausente</button>`);
     buttons.push(`<button class="btn small" type="button" data-action="cancel" data-id="${order.id}">Cancelar pedido</button>`);
   }
   if (order.status === 'on_way') {
     buttons.push(`<button class="btn primary small" type="button" data-action="delivered" data-id="${order.id}">Pedido entregado</button>`);
+    buttons.push(`<button class="btn small" type="button" data-action="client-absent" data-id="${order.id}">Cliente ausente</button>`);
   }
   const actionHtml = buttons.length ? `<div class="order-actions">${buttons.join('')}</div>` : '';
   return `<div class="order-card">
-    <div class="order-row"><h4>Pedido #${order.id || ''}</h4><span>${order.status === 'assigned' ? 'Aceptado' : order.status === 'on_way' ? 'En camino' : order.status === 'delivered' ? 'Entregado' : order.status === 'canceled' ? 'Cancelado' : order.status}</span></div>
+    <div class="order-row"><h4>Pedido #${order.id || ''}</h4><span>${order.status === 'assigned' ? 'Aceptado' : order.status === 'on_way' ? 'En camino' : order.status === 'delivered' ? 'Entregado' : order.status === 'canceled' ? 'Cancelado' : order.status === 'client_absent' ? 'Cliente ausente' : order.status}</span></div>
     <div class="order-meta">
       <p><strong>Receptor:</strong> ${order.delivery_name}</p>
       <p><strong>Teléfono:</strong> ${phoneLink}</p>
@@ -430,6 +436,7 @@ async function loadAvailableOrders() {
   const { data, error } = await query;
   if (error) return console.error(error);
   const list = data || [];
+  checkPendingOrderAlerts(list);
   const currentIds = list.map(order => order.id);
   const newIds = lastPendingOrderIds.length ? currentIds.filter(id => !lastPendingOrderIds.includes(id)) : [];
   lastPendingOrderIds = currentIds;
@@ -489,7 +496,10 @@ async function loadMotorHistory() {
 }
 
 async function loadAdminMetrics() {
-  const { data, error } = await supabase.from('orders').select('*');
+  const range = getFilterRange(elements.adminOrderFilter.value, elements.adminStartDate.value, elements.adminEndDate.value);
+  let query = supabase.from('orders').select('*');
+  if (range) query = query.gte('created_at', range.start).lte('created_at', range.end);
+  const { data, error } = await query;
   if (error) return console.error(error);
   const total = data.length;
   const active = data.filter(order => ['pending','assigned','on_way'].includes(order.status)).length;
@@ -508,7 +518,7 @@ async function loadAdminMetrics() {
   elements.adminEarnings.textContent = `$${earnings.toFixed(2)}`;
   if (elements.adminMetricsSummary) {
     elements.adminMetricsSummary.innerHTML = `
-      <div class="metric-item"><span>Pedidos hoy</span><strong>${today}</strong></div>
+      <div class="metric-item"><span>Pedidos del filtro</span><strong>${total}</strong></div>
       <div class="metric-item"><span>Urgentes</span><strong>${urgent}</strong></div>
       <div class="metric-item"><span>Entregados</span><strong>${delivered}</strong></div>
       <div class="metric-item"><span>Activos</span><strong>${active}</strong></div>
@@ -517,12 +527,38 @@ async function loadAdminMetrics() {
 }
 
 async function loadMotoristasForAdmin() {
-  const { data, error } = await supabase.from('profiles').select('id,full_name,email,assigned_commerce,assigned_commerce_id').eq('role','motorizado');
+  const { data, error } = await supabase.from('profiles').select('id,full_name,email,role,assigned_commerce,assigned_commerce_id,active_order');
   if (error) return console.error(error);
-  elements.adminMotoristaSelect.innerHTML = data.map(user => {
-    const commerceLabel = user.assigned_commerce || (user.assigned_commerce_id ? 'Comercio asignado' : 'Sin comercio');
-    return `<option value="${user.id}">${user.full_name || user.email}${commerceLabel ? ' — ' + commerceLabel : ''}</option>`;
-  }).join('');
+  const motoristas = (data || []).filter(user => user.role === 'motorizado');
+  elements.adminMotoristaSelect.innerHTML = motoristas.length
+    ? motoristas.map(user => {
+        const commerceLabel = user.assigned_commerce || (user.assigned_commerce_id ? 'Comercio asignado' : 'Sin comercio');
+        return `<option value="${user.id}">${user.full_name || user.email}${commerceLabel ? ' — ' + commerceLabel : ''}</option>`;
+      }).join('')
+    : '<option value="">No hay motorizados registrados</option>';
+  elements.adminMotoristaSelect.disabled = !motoristas.length;
+  renderActiveMotorists(motoristas);
+}
+
+function renderActiveMotorists(motoristas) {
+  const activeMotoristas = (motoristas || []).filter(user => user.active_order);
+  if (!elements.adminActiveMotorists) return;
+  elements.adminActiveMotorists.innerHTML = activeMotoristas.length
+    ? activeMotoristas.map(user => `<div class="metric-item"><span>${user.full_name || user.email}</span><strong>Activo</strong></div>`).join('')
+    : '<p class="note">No hay motorizados activos.</p>';
+}
+
+async function loadAliadosForAdmin() {
+  const { data, error } = await supabase.from('profiles').select('id,business_name,email,role');
+  if (error) return console.error(error);
+  const aliados = (data || []).filter(user => user.role === 'aliado');
+  elements.adminCommerceSelect.innerHTML = aliados.length
+    ? aliados.map(user => {
+        const label = user.business_name || user.email || 'Aliado sin nombre';
+        return `<option value="${user.id}" data-commerce-name="${label}">${label}</option>`;
+      }).join('')
+    : '<option value="">No hay aliados registrados</option>';
+  elements.adminCommerceSelect.disabled = !aliados.length;
 }
 
 async function loadAdminOrders() {
@@ -684,6 +720,7 @@ async function handleOrderAction(event) {
   if (action === 'accept') return acceptOrder(id);
   if (action === 'to-way') return updateOrderStatus(id, 'on_way');
   if (action === 'delivered') return triggerPhotoCapture(id);
+  if (action === 'client-absent') return updateOrderStatus(id, 'client_absent');
   if (action === 'cancel') return updateOrderStatus(id, 'canceled');
 }
 
@@ -714,6 +751,9 @@ function triggerPhotoCapture(orderId) {
 }
 
 async function completeDeliveryWithPhoto(orderId, photoDataUrl) {
+  const { data: existingOrder, error: fetchError } = await supabase.from('orders').select('status').eq('id', orderId).single();
+  if (fetchError || !existingOrder) return setStatus('No se encontró el pedido.', 'Error', false);
+  if (existingOrder.status === 'delivered') return setStatus('No se pueden hacer cambios porque el pedido ya fue entregado.', 'Bloqueado', false);
   const updateData = {
     status: 'delivered',
     updated_at: new Date().toISOString(),
@@ -732,6 +772,9 @@ async function completeDeliveryWithPhoto(orderId, photoDataUrl) {
 }
 
 async function updateOrderStatus(orderId, nextStatus) {
+  const { data: existingOrder, error: fetchError } = await supabase.from('orders').select('status').eq('id', orderId).single();
+  if (fetchError || !existingOrder) return setStatus('No se encontró el pedido.', 'Error', false);
+  if (existingOrder.status === 'delivered') return setStatus('No se pueden hacer cambios porque el pedido ya fue entregado.', 'Bloqueado', false);
   const updateData = { status: nextStatus, updated_at: new Date().toISOString() };
   if (nextStatus === 'on_way') updateData.started_at = new Date().toISOString();
   if (nextStatus === 'delivered') updateData.delivered_at = new Date().toISOString();
@@ -793,23 +836,45 @@ async function createOrder(event) {
 
 async function assignCommerce() {
   const motoristaId = elements.adminMotoristaSelect.value;
-  const commerceName = elements.adminCommerceName.value.trim();
-  if (!motoristaId || !commerceName) return setStatus('Selecciona el motorizado y escribe el nombre del local.', 'Error', false);
+  const selectedOption = elements.adminCommerceSelect.selectedOptions[0];
+  const commerceName = selectedOption?.dataset?.commerceName?.trim() || '';
+  const commerceId = elements.adminCommerceSelect.value;
+  if (!motoristaId || !commerceId || !commerceName) return setStatus('Selecciona el motorizado y un aliado del listado.', 'Error', false);
 
-  const { data: commerceProfiles, error: commerceError } = await supabase.from('profiles').select('id,business_name,email').or(`business_name.eq.${commerceName},email.eq.${commerceName}`).eq('role','aliado').limit(1);
-  if (commerceError) return setStatus('Error al buscar el comercio.', 'Error', false);
-
-  const updateData = { assigned_commerce: commerceName };
-  if (commerceProfiles?.length) {
-    updateData.assigned_commerce_id = commerceProfiles[0].id;
-  } else {
-    updateData.assigned_commerce_id = null;
-  }
-
+  const updateData = { assigned_commerce: commerceName, assigned_commerce_id: commerceId };
   const { error } = await supabase.from('profiles').update(updateData).eq('id', motoristaId);
   if (error) return setStatus('No fue posible asignar el comercio.', 'Error', false);
   setStatus(`Motorizado asignado al local ${commerceName}.`, 'Éxito');
   await loadMotoristasForAdmin();
+  await loadAliadosForAdmin();
+}
+
+function checkPendingOrderAlerts(orders) {
+  const thresholdMs = 5 * 60 * 1000;
+  orders.forEach(order => {
+    if (!order?.created_at || order.status !== 'pending' || order.assigned_to_id) {
+      alertedPendingOrderIds.delete(order.id);
+      return;
+    }
+    const createdAt = new Date(order.created_at).getTime();
+    if (!Number.isNaN(createdAt) && Date.now() - createdAt >= thresholdMs && !alertedPendingOrderIds.has(order.id)) {
+      alertedPendingOrderIds.add(order.id);
+      notifyPendingOrderAlert(order);
+      if (currentProfile?.role === 'admin') {
+        setStatus(`Alerta: el pedido #${order.id} lleva mucho tiempo sin asignarse.`, 'Alerta', false);
+      }
+    }
+  });
+}
+
+function notifyPendingOrderAlert(order) {
+  const body = `El pedido #${order.id} lleva más de 5 minutos sin asignarse.`;
+  if (Notification.permission === 'granted') {
+    new Notification('Pedido sin asignar', { body, icon: 'icon-192.png' });
+  }
+  if (soundEnabled) {
+    try { playBeep(450, 720, 0.2); } catch (err) { console.debug('Pending alert beep failed', err); }
+  }
 }
 
 async function notifyNewOrder() {
@@ -847,6 +912,13 @@ async function notifyNewOrder() {
 function updateSoundButton() {
   if (!elements.btnSoundToggle) return;
   elements.btnSoundToggle.textContent = soundEnabled ? '🔔 Sonido' : '🔕 Sonido';
+}
+
+function updateNotificationButton() {
+  if (!elements.btnEnableNotifications) return;
+  const active = 'Notification' in window && Notification.permission === 'granted';
+  elements.btnEnableNotifications.textContent = active ? 'Notificaciones activadas' : 'Activar notificaciones';
+  elements.btnEnableNotifications.disabled = active;
 }
 
 function toggleSound() {
@@ -933,10 +1005,23 @@ async function setupRealtimeSubscriptions() {
 }
 
 async function requestNotificationPermission() {
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'default') {
-    await Notification.requestPermission();
+  if (!('Notification' in window)) {
+    setStatus('Las notificaciones no están disponibles en este navegador.', 'Atención', false);
+    updateNotificationButton();
+    return false;
   }
+  if (Notification.permission === 'default') {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      setStatus('Notificaciones activadas correctamente.', 'Éxito');
+    } else {
+      setStatus('Las notificaciones quedaron desactivadas.', 'Atención', false);
+    }
+  } else if (Notification.permission === 'granted') {
+    setStatus('Las notificaciones ya estaban activadas.', 'Éxito');
+  }
+  updateNotificationButton();
+  return Notification.permission === 'granted';
 }
 
 async function installApp() {
@@ -996,6 +1081,7 @@ elements.btnToggleStatus.addEventListener('click', () => {
   motorOn = !motorOn;
   elements.motorStatusText.textContent = motorOn ? 'ON' : 'OFF';
 });
+elements.btnEnableNotifications.addEventListener('click', requestNotificationPermission);
 elements.motorHistoryFilter.addEventListener('change', () => setFilterInputsVisibility(elements.motorHistoryFilter, elements.motorStartDate, elements.motorEndDate));
 elements.adminOrderFilter.addEventListener('change', () => setFilterInputsVisibility(elements.adminOrderFilter, elements.adminStartDate, elements.adminEndDate));
 if (elements.aliadoOrderFilter) {
@@ -1046,6 +1132,7 @@ if (elements.btnSoundToggle) {
   elements.btnSoundToggle.addEventListener('click', toggleSound);
 }
 updateSoundButton();
+updateNotificationButton();
 
 setTabBehavior();
 renderPriceOptions();
