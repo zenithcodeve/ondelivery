@@ -738,19 +738,25 @@ async function assignCommerce() {
 
 async function notifyNewOrder() {
   try {
+    console.debug('notifyNewOrder called, soundEnabled=', soundEnabled, 'Notification.permission=', Notification.permission);
     if (Notification.permission === 'granted') {
       new Notification('On Delivery', { body: 'Ha llegado un nuevo pedido disponible.', icon: 'icon-192.png' });
+      console.debug('Notification shown');
     }
     if (soundEnabled) {
       try {
+        console.debug('Attempting audioAlarm.play()');
         await audioAlarm.play();
+        console.debug('audioAlarm.play() succeeded');
       } catch (err) {
         console.debug('audioAlarm.play() failed, falling back to WebAudio beep', err);
-        playBeep();
+        try { playBeep(); console.debug('playBeep() executed'); } catch (beepErr) { console.debug('playBeep() failed', beepErr); }
       }
+    } else {
+      console.debug('soundEnabled is false, skipping audio');
     }
   } catch (error) {
-    console.warn('No se pudo reproducir el sonido.', error);
+    console.warn('Error during notifyNewOrder', error);
   }
 }
 
