@@ -6,6 +6,23 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const audioAlarm = new Audio('https://www.myinstants.com/media/sounds/alarm-alerta.mp3');
 audioAlarm.preload = 'auto';
 audioAlarm.volume = 0.8;
+
+async function tryLoadLocalAlarm() {
+  const localPath = 'dragon-studio-correct-472358.mp3';
+  try {
+    const res = await fetch(localPath, { method: 'GET' });
+    if (res.ok) {
+      audioAlarm.src = localPath;
+      console.debug('Loaded local alarm:', localPath);
+      setStatus('Usando sonido local para notificaciones.', 'Información');
+      return true;
+    }
+  } catch (err) {
+    console.debug('No local alarm found or fetch failed', err);
+  }
+  console.debug('Using remote alarm fallback');
+  return false;
+}
 let soundEnabled = localStorage.getItem('soundEnabled');
 if (soundEnabled === null) soundEnabled = 'true';
 soundEnabled = soundEnabled === 'true';
@@ -926,4 +943,5 @@ setTabBehavior();
 renderPriceOptions();
 registerServiceWorker();
 checkSession();
+tryLoadLocalAlarm();
 requestNotificationPermission();
