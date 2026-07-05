@@ -71,6 +71,7 @@ let ordersChannel = null;
 let realtimePollInterval = null;
 let earningsResetAt = localStorage.getItem('earningsResetAt');
 let lastPendingOrderIds = [];
+let pendingPhotoOrderId = null;
 
 const elements = {
   authSection: document.getElementById('auth-section'),
@@ -97,6 +98,8 @@ const elements = {
   aliadoCostPanel: document.getElementById('aliado-cost-panel'),
   deliveryForm: document.getElementById('delivery-form'),
   priceOptionsContainer: document.getElementById('price-options'),
+  customPrice: document.getElementById('custom-price'),
+  photoCaptureInput: document.getElementById('photo-capture-input'),
   motorView: document.getElementById('motorizado-view'),
   motorStatusText: document.getElementById('motor-status-text'),
   btnToggleStatus: document.getElementById('btn-toggle-status'),
@@ -118,6 +121,7 @@ const elements = {
   adminEarnings: document.getElementById('admin-earnings'),
   adminMotoristaSelect: document.getElementById('admin-motorista-select'),
   adminCommerceName: document.getElementById('admin-commerce-name'),
+  adminMetricsSummary: document.getElementById('admin-metrics-summary'),
   btnAssignCommerce: document.getElementById('btn-assign-commerce'),
   adminOrderFilter: document.getElementById('admin-order-filter'),
   btnExportAliado: document.getElementById('btn-export-aliado'),
@@ -196,6 +200,13 @@ function renderPriceOptions() {
 
 function updateLogoutButton() {
   elements.btnLogout.classList.toggle('hidden', !currentUser);
+}
+
+function buildWhatsAppUrl(phone, text = 'Hola, necesito soporte de On Delivery') {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  const encodedText = encodeURIComponent(text);
+  return `https://wa.me/${digits}?text=${encodedText}`;
 }
 
 async function checkSession() {
@@ -358,6 +369,7 @@ function orderCardHtml(order) {
   const price = order.price ? `$${order.price}` : 'Sin precio';
   const charge = '';
   const mapLink = order.delivery_url ? `<a href="${order.delivery_url}" target="_blank" rel="noopener">Abrir ruta</a>` : '';
+  const whatsappLink = buildWhatsAppUrl(order.delivery_phone, `Hola, te escribo por el pedido #${order.id || ''}`);
   return `<div class="order-card">
     <div class="order-row"><h4>Pedido #${order.id || ''}</h4><span>${stage}</span></div>
     <div class="order-meta">
@@ -369,6 +381,7 @@ function orderCardHtml(order) {
       <p><strong>Velocidad:</strong> ${urgent}</p>
       <p><strong>Descripción:</strong> ${order.description}</p>
       ${mapLink}
+      ${whatsappLink ? `<a href="${whatsappLink}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
     </div>
     ${charge}
   </div>`;
@@ -377,6 +390,8 @@ function orderCardHtml(order) {
 function orderCardHtmlMotor(order) {
   const urlLink = order.delivery_url ? `<a href="${order.delivery_url}" target="_blank" rel="noopener">Google Maps</a>` : '';
   const phoneLink = order.delivery_phone ? `<a href="tel:${order.delivery_phone}">${order.delivery_phone}</a>` : 'Sin teléfono';
+  const whatsappLink = buildWhatsAppUrl(order.delivery_phone, `Hola, te escribo por el pedido #${order.id || ''}`);
+  const photoPreview = order.delivery_photo ? `<img class="delivery-photo" src="${order.delivery_photo}" alt="Foto de entrega">` : '';
   const buttons = [];
   if (order.status === 'assigned') {
     buttons.push(`<button class="btn primary small" type="button" data-action="to-way" data-id="${order.id}">Pedido en camino</button>`);
@@ -397,6 +412,8 @@ function orderCardHtmlMotor(order) {
       <p><strong>Comercio:</strong> ${order.commerce_name || 'Desconocido'}</p>
       <p><strong>Precio:</strong> $${order.price || 0}</p>
       <p><strong>Descripción:</strong> ${order.description}</p>
+      ${whatsappLink ? `<p><a href="${whatsappLink}" target="_blank" rel="noopener">Enviar WhatsApp</a></p>` : ''}
+      ${photoPreview}
     </div>
     ${actionHtml}
   </div>`;
@@ -405,10 +422,10 @@ function orderCardHtmlMotor(order) {
 async function loadAvailableOrders() {
   if (!currentProfile) return;
   let query = supabase.from('orders').select('*').eq('status', 'pending').is('assigned_to_id', null).order('created_at', { ascending: false });
-  if (currentProfile.assigned_commerce_id) {
-    query = query.eq('commerce_id', currentProfile.assigned_commerce_id);
-  } else if (currentProfile.assigned_commerce) {
+  if (currentProfile.assigned_commerce) {
     query = query.eq('commerce_name', currentProfile.assigned_commerce);
+  } else if (currentProfile.assigned_commerce_id) {
+    query = query.eq('commerce_id', currentProfile.assigned_commerce_id);
   }
   const { data, error } = await query;
   if (error) return console.error(error);
@@ -478,10 +495,25 @@ async function loadAdminMetrics() {
   const active = data.filter(order => ['pending','assigned','on_way'].includes(order.status)).length;
   const delivered = data.filter(order => order.status === 'delivered').length;
   const earnings = data.reduce((sum, order) => sum + ((order.status === 'delivered' ? order.price : 0) || 0) * 0.6, 0);
+  const urgent = data.filter(order => order.urgent).length;
+  const today = data.filter(order => {
+    if (!order.created_at) return false;
+    const created = new Date(order.created_at);
+    const now = new Date();
+    return created.toDateString() === now.toDateString();
+  }).length;
   elements.adminTotalOrders.textContent = total;
   elements.adminActiveOrders.textContent = active;
   elements.adminDeliveredCount.textContent = delivered;
   elements.adminEarnings.textContent = `$${earnings.toFixed(2)}`;
+  if (elements.adminMetricsSummary) {
+    elements.adminMetricsSummary.innerHTML = `
+      <div class="metric-item"><span>Pedidos hoy</span><strong>${today}</strong></div>
+      <div class="metric-item"><span>Urgentes</span><strong>${urgent}</strong></div>
+      <div class="metric-item"><span>Entregados</span><strong>${delivered}</strong></div>
+      <div class="metric-item"><span>Activos</span><strong>${active}</strong></div>
+    `;
+  }
 }
 
 async function loadMotoristasForAdmin() {
@@ -651,7 +683,7 @@ async function handleOrderAction(event) {
   const id = button.dataset.id;
   if (action === 'accept') return acceptOrder(id);
   if (action === 'to-way') return updateOrderStatus(id, 'on_way');
-  if (action === 'delivered') return updateOrderStatus(id, 'delivered');
+  if (action === 'delivered') return triggerPhotoCapture(id);
   if (action === 'cancel') return updateOrderStatus(id, 'canceled');
 }
 
@@ -661,6 +693,42 @@ async function acceptOrder(orderId) {
   setStatus('Pedido aceptado correctamente.', 'Éxito');
   await refreshMotorView();
   await updateMotorStatusFromOrders();
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('No se pudo leer la foto'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function triggerPhotoCapture(orderId) {
+  pendingPhotoOrderId = orderId;
+  if (elements.photoCaptureInput) {
+    elements.photoCaptureInput.click();
+  } else {
+    setStatus('No se pudo abrir la cámara. Intenta de nuevo.', 'Error', false);
+  }
+}
+
+async function completeDeliveryWithPhoto(orderId, photoDataUrl) {
+  const updateData = {
+    status: 'delivered',
+    updated_at: new Date().toISOString(),
+    delivered_at: new Date().toISOString(),
+    delivery_photo: photoDataUrl,
+  };
+  const { error } = await supabase.from('orders').update(updateData).eq('id', orderId);
+  if (error) return setStatus('Error al actualizar el pedido.', 'Error', false);
+  setStatus('Pedido entregado con foto.', 'Éxito');
+  if (currentProfile.role === 'motorizado') {
+    await refreshMotorView();
+    await updateMotorStatusFromOrders();
+  }
+  if (currentProfile.role === 'aliado') await refreshAliadoView();
+  if (currentProfile.role === 'admin') await refreshAdminView();
 }
 
 async function updateOrderStatus(orderId, nextStatus) {
@@ -726,7 +794,7 @@ async function createOrder(event) {
 async function assignCommerce() {
   const motoristaId = elements.adminMotoristaSelect.value;
   const commerceName = elements.adminCommerceName.value.trim();
-  if (!motoristaId || !commerceName) return setStatus('Selecciona el motorizado y nombre del comercio.', 'Error', false);
+  if (!motoristaId || !commerceName) return setStatus('Selecciona el motorizado y escribe el nombre del local.', 'Error', false);
 
   const { data: commerceProfiles, error: commerceError } = await supabase.from('profiles').select('id,business_name,email').or(`business_name.eq.${commerceName},email.eq.${commerceName}`).eq('role','aliado').limit(1);
   if (commerceError) return setStatus('Error al buscar el comercio.', 'Error', false);
@@ -740,16 +808,24 @@ async function assignCommerce() {
 
   const { error } = await supabase.from('profiles').update(updateData).eq('id', motoristaId);
   if (error) return setStatus('No fue posible asignar el comercio.', 'Error', false);
-  setStatus(`Motorizado asignado a ${commerceName}.`, 'Éxito');
+  setStatus(`Motorizado asignado al local ${commerceName}.`, 'Éxito');
   await loadMotoristasForAdmin();
 }
 
 async function notifyNewOrder() {
   try {
     console.debug('notifyNewOrder called, soundEnabled=', soundEnabled, 'Notification.permission=', Notification.permission);
+    const notificationBody = 'Ha llegado un nuevo pedido disponible.';
     if (Notification.permission === 'granted') {
-      new Notification('On Delivery', { body: 'Ha llegado un nuevo pedido disponible.', icon: 'icon-192.png' });
+      new Notification('On Delivery', { body: notificationBody, icon: 'icon-192.png' });
       console.debug('Notification shown');
+    }
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      if (registration?.showNotification) {
+        registration.showNotification('On Delivery', { body: notificationBody, icon: '/icon-192.png' });
+        console.debug('Service worker notification shown');
+      }
     }
     if (soundEnabled) {
       try {
@@ -936,6 +1012,24 @@ elements.btnAdminFilter.addEventListener('click', loadAdminOrders);
 elements.btnAssignCommerce.addEventListener('click', assignCommerce);
 elements.btnExportAliado.addEventListener('click', exportAliadoOrders);
 elements.btnExportAdmin.addEventListener('click', exportAdminOrders);
+if (elements.photoCaptureInput) {
+  elements.photoCaptureInput.addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    if (!pendingPhotoOrderId || !file) {
+      pendingPhotoOrderId = null;
+      return;
+    }
+    try {
+      const photoDataUrl = await readFileAsDataUrl(file);
+      await completeDeliveryWithPhoto(pendingPhotoOrderId, photoDataUrl);
+    } catch (error) {
+      setStatus('No se pudo procesar la foto.', 'Error', false);
+    } finally {
+      pendingPhotoOrderId = null;
+      event.target.value = '';
+    }
+  });
+}
 
 if (elements.btnTestSound) {
   elements.btnTestSound.addEventListener('click', async () => {

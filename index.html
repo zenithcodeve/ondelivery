@@ -162,12 +162,16 @@
           <div class="stat-card"><span class="stat-value" id="admin-total-orders">0</span><span class="stat-label">Pedidos totales</span></div>
           <div class="stat-card"><span class="stat-value" id="admin-active-orders">0</span><span class="stat-label">Pedidos activos</span></div>
           <div class="stat-card"><span class="stat-value" id="admin-delivered-count">0</span><span class="stat-label">Entregados</span></div>
-          <div class="stat-card"><span class="stat-value" id="admin-earnings">$0.00</span><span class="stat-label">Ganancias 60%</span></div>
+          <div class="stat-card"><span class="stat-value" id="admin-earnings">$0.00</span><span class="stat-label">Total generado</span></div>
+        </div>
+        <div class="card small-card">
+          <h3>Resumen de rendimiento</h3>
+          <div id="admin-metrics-summary" class="metrics-list"></div>
         </div>
         <div class="card small-card">
           <h3>Asignar motorizado a comercio</h3>
           <div class="field"><label for="admin-motorista-select">Motorizado</label><select id="admin-motorista-select"></select></div>
-          <div class="field"><label for="admin-commerce-name">Comercio</label><input id="admin-commerce-name" type="text" placeholder="Nombre de comercio"></div>
+          <div class="field"><label for="admin-commerce-name">Nombre del local</label><input id="admin-commerce-name" type="text" placeholder="Nombre del local"></div>
           <button id="btn-assign-commerce" class="btn primary">Asignar comercio</button>
         </div>
         <div class="card small-card">
@@ -186,6 +190,8 @@
       </section>
     </main>
   </div>
+
+  <input id="photo-capture-input" type="file" accept="image/*" capture="environment" class="hidden">
 
   <script type="module" src="app.js"></script>
 </body>
