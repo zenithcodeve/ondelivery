@@ -27,6 +27,7 @@ let soundEnabled = localStorage.getItem('soundEnabled');
 if (soundEnabled === null) soundEnabled = 'true';
 soundEnabled = soundEnabled === 'true';
 let audioCtx = null;
+let audioUnlocked = false;
 
 function getAudioContext() {
   if (!audioCtx) {
@@ -63,6 +64,32 @@ function playBeep(duration = 300, freq = 880, vol = 0.25) {
     console.debug('playBeep failed', err);
   }
 }
+async function unlockAudio() {
+  if (audioUnlocked) return true;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+    if (ctx.state === 'suspended') await ctx.resume();
+    audioUnlocked = true;
+    return true;
+  } catch (err) {
+    console.debug('unlockAudio failed', err);
+    return false;
+  }
+}
+
+async function playNotificationSound() {
+  if (!soundEnabled) return;
+  try {
+    await unlockAudio();
+    audioAlarm.currentTime = 0;
+    await audioAlarm.play();
+  } catch (err) {
+    console.debug('HTML audio play failed, falling back to WebAudio beep', err);
+    try { playBeep(); } catch (beepErr) { console.debug('WebAudio beep failed', beepErr); }
+  }
+}
+
 let deferredPrompt = null;
 let currentUser = null;
 let currentProfile = null;
@@ -123,6 +150,7 @@ const elements = {
   adminMotoristaSelect: document.getElementById('admin-motorista-select'),
   adminCommerceSelect: document.getElementById('admin-commerce-select'),
   adminMetricsSummary: document.getElementById('admin-metrics-summary'),
+  adminMotoristStatus: document.getElementById('admin-motorist-status'),
   adminActiveMotorists: document.getElementById('admin-active-motorists'),
   btnAssignCommerce: document.getElementById('btn-assign-commerce'),
   adminOrderFilter: document.getElementById('admin-order-filter'),
@@ -377,6 +405,7 @@ function orderCardHtml(order) {
   return `<div class="order-card">
     <div class="order-row"><h4>Pedido #${order.id || ''}</h4><span>${stage}</span></div>
     <div class="order-meta">
+      <p><strong>Aliado:</strong> ${order.commerce_name || 'Desconocido'}</p>
       <p><strong>Receptor:</strong> ${order.delivery_name}</p>
       <p><strong>Teléfono:</strong> ${order.delivery_phone}</p>
       <p><strong>Dirección:</strong> ${order.delivery_address}</p>
@@ -407,6 +436,9 @@ function orderCardHtmlMotor(order) {
     buttons.push(`<button class="btn primary small" type="button" data-action="delivered" data-id="${order.id}">Pedido entregado</button>`);
     buttons.push(`<button class="btn small" type="button" data-action="client-absent" data-id="${order.id}">Cliente ausente</button>`);
   }
+  if (['assigned', 'on_way', 'delivered'].includes(order.status)) {
+    buttons.push(`<button class="btn small secondary" type="button" data-action="photo" data-id="${order.id}">Tomar foto</button>`);
+  }
   const actionHtml = buttons.length ? `<div class="order-actions">${buttons.join('')}</div>` : '';
   return `<div class="order-card">
     <div class="order-row"><h4>Pedido #${order.id || ''}</h4><span>${order.status === 'assigned' ? 'Aceptado' : order.status === 'on_way' ? 'En camino' : order.status === 'delivered' ? 'Entregado' : order.status === 'canceled' ? 'Cancelado' : order.status === 'client_absent' ? 'Cliente ausente' : order.status}</span></div>
@@ -415,7 +447,7 @@ function orderCardHtmlMotor(order) {
       <p><strong>Teléfono:</strong> ${phoneLink}</p>
       <p><strong>Dirección:</strong> ${order.delivery_address}</p>
       <p><strong>URL:</strong> ${urlLink}</p>
-      <p><strong>Comercio:</strong> ${order.commerce_name || 'Desconocido'}</p>
+      <p><strong>Aliado:</strong> ${order.commerce_name || 'Desconocido'}</p>
       <p><strong>Precio:</strong> $${order.price || 0}</p>
       <p><strong>Descripción:</strong> ${order.description}</p>
       ${whatsappLink ? `<p><a href="${whatsappLink}" target="_blank" rel="noopener">Enviar WhatsApp</a></p>` : ''}
@@ -444,7 +476,8 @@ async function loadAvailableOrders() {
 
   if (currentProfile.role === 'motorizado' && newIds.length) {
     console.debug('New pending orders detected by polling', newIds);
-    notifyNewOrder();
+    const incomingOrder = list.find(order => order.id === newIds[0]);
+    notifyNewOrder(incomingOrder);
   }
 }
 
@@ -454,6 +487,7 @@ function availableOrderHtml(order) {
   return `<div class="order-card">
     <div class="order-row"><h4>Pedido #${order.id || ''}</h4><span>Disponible</span></div>
     <div class="order-meta">
+      <p><strong>Aliado:</strong> ${order.commerce_name || 'Desconocido'}</p>
       <p><strong>Receptor:</strong> ${order.delivery_name}</p>
       <p><strong>Teléfono:</strong> <a href="tel:${order.delivery_phone}">${order.delivery_phone}</a></p>
       <p><strong>Dirección:</strong> ${order.delivery_address}</p>
@@ -527,9 +561,14 @@ async function loadAdminMetrics() {
 }
 
 async function loadMotoristasForAdmin() {
-  const { data, error } = await supabase.from('profiles').select('id,full_name,email,role,assigned_commerce,assigned_commerce_id,active_order');
-  if (error) return console.error(error);
-  const motoristas = (data || []).filter(user => user.role === 'motorizado');
+  const [profilesResult, ordersResult] = await Promise.all([
+    supabase.from('profiles').select('id,full_name,email,role,assigned_commerce,assigned_commerce_id,active_order'),
+    supabase.from('orders').select('assigned_to_id,status').in('status', ['assigned', 'on_way'])
+  ]);
+  if (profilesResult.error) return console.error(profilesResult.error);
+  if (ordersResult.error) return console.error(ordersResult.error);
+  const motoristas = (profilesResult.data || []).filter(user => user.role === 'motorizado');
+  const busyMotoristIds = new Set((ordersResult.data || []).filter(order => order.assigned_to_id).map(order => order.assigned_to_id));
   elements.adminMotoristaSelect.innerHTML = motoristas.length
     ? motoristas.map(user => {
         const commerceLabel = user.assigned_commerce || (user.assigned_commerce_id ? 'Comercio asignado' : 'Sin comercio');
@@ -538,14 +577,27 @@ async function loadMotoristasForAdmin() {
     : '<option value="">No hay motorizados registrados</option>';
   elements.adminMotoristaSelect.disabled = !motoristas.length;
   renderActiveMotorists(motoristas);
+  renderMotoristStatus(motoristas, busyMotoristIds);
 }
 
 function renderActiveMotorists(motoristas) {
   const activeMotoristas = (motoristas || []).filter(user => user.active_order);
   if (!elements.adminActiveMotorists) return;
   elements.adminActiveMotorists.innerHTML = activeMotoristas.length
-    ? activeMotoristas.map(user => `<div class="metric-item"><span>${user.full_name || user.email}</span><strong>Activo</strong></div>`).join('')
-    : '<p class="note">No hay motorizados activos.</p>';
+    ? activeMotoristas.map(user => `<div class="metric-item"><span>${user.full_name || user.email}</span><strong>Con pedido</strong></div>`).join('')
+    : '<p class="note">No hay motorizados con pedidos activos.</p>';
+}
+
+function renderMotoristStatus(motoristas, busyMotoristIds) {
+  const onCount = (motoristas || []).filter(user => !user.active_order).length;
+  const withOrdersCount = (motoristas || []).filter(user => busyMotoristIds?.has(user.id)).length;
+  const totalCount = (motoristas || []).length;
+  if (!elements.adminMotoristStatus) return;
+  elements.adminMotoristStatus.innerHTML = `
+    <div class="metric-item"><span>ON</span><strong>${onCount}</strong></div>
+    <div class="metric-item"><span>Con pedidos</span><strong>${withOrdersCount}</strong></div>
+    <div class="metric-item"><span>Total</span><strong>${totalCount}</strong></div>
+  `;
 }
 
 async function loadAliadosForAdmin() {
@@ -719,7 +771,8 @@ async function handleOrderAction(event) {
   const id = button.dataset.id;
   if (action === 'accept') return acceptOrder(id);
   if (action === 'to-way') return updateOrderStatus(id, 'on_way');
-  if (action === 'delivered') return triggerPhotoCapture(id);
+  if (action === 'delivered') return updateOrderStatus(id, 'delivered');
+  if (action === 'photo') return triggerPhotoCapture(id);
   if (action === 'client-absent') return updateOrderStatus(id, 'client_absent');
   if (action === 'cancel') return updateOrderStatus(id, 'canceled');
 }
@@ -729,7 +782,7 @@ async function acceptOrder(orderId) {
   if (error) return setStatus('No fue posible aceptar el pedido.', 'Error', false);
   setStatus('Pedido aceptado correctamente.', 'Éxito');
   await refreshMotorView();
-  await updateMotorStatusFromOrders();
+  await updateMotorStatusFromOrders(true);
 }
 
 function readFileAsDataUrl(file) {
@@ -753,16 +806,18 @@ function triggerPhotoCapture(orderId) {
 async function completeDeliveryWithPhoto(orderId, photoDataUrl) {
   const { data: existingOrder, error: fetchError } = await supabase.from('orders').select('status').eq('id', orderId).single();
   if (fetchError || !existingOrder) return setStatus('No se encontró el pedido.', 'Error', false);
-  if (existingOrder.status === 'delivered') return setStatus('No se pueden hacer cambios porque el pedido ya fue entregado.', 'Bloqueado', false);
+  const wasDelivered = existingOrder.status === 'delivered';
   const updateData = {
-    status: 'delivered',
     updated_at: new Date().toISOString(),
-    delivered_at: new Date().toISOString(),
     delivery_photo: photoDataUrl,
   };
+  if (!wasDelivered) {
+    updateData.status = 'delivered';
+    updateData.delivered_at = new Date().toISOString();
+  }
   const { error } = await supabase.from('orders').update(updateData).eq('id', orderId);
   if (error) return setStatus('Error al actualizar el pedido.', 'Error', false);
-  setStatus('Pedido entregado con foto.', 'Éxito');
+  setStatus(wasDelivered ? 'Foto guardada en el pedido.' : 'Pedido entregado con foto.', 'Éxito');
   if (currentProfile.role === 'motorizado') {
     await refreshMotorView();
     await updateMotorStatusFromOrders();
@@ -783,16 +838,18 @@ async function updateOrderStatus(orderId, nextStatus) {
   setStatus('Pedido actualizado con éxito.', 'Éxito');
   if (currentProfile.role === 'motorizado') {
     await refreshMotorView();
-    await updateMotorStatusFromOrders();
+    await updateMotorStatusFromOrders(!['delivered','canceled','client_absent'].includes(nextStatus));
   }
   if (currentProfile.role === 'aliado') await refreshAliadoView();
   if (currentProfile.role === 'admin') await refreshAdminView();
 }
 
-async function updateMotorStatusFromOrders() {
+async function updateMotorStatusFromOrders(isBusy = true) {
   const { data, error } = await supabase.from('orders').select('id').eq('assigned_to_id', currentUser.id).in('status', ['assigned','on_way']);
   if (error) return;
-  currentProfile.active_order = data?.length ? true : false;
+  const hasActive = data?.length ? true : false;
+  currentProfile.active_order = isBusy ? hasActive : false;
+  await supabase.from('profiles').update({ active_order: currentProfile.active_order }).eq('id', currentUser.id);
   updateMotorStatus();
 }
 
@@ -873,14 +930,15 @@ function notifyPendingOrderAlert(order) {
     new Notification('Pedido sin asignar', { body, icon: 'icon-192.png' });
   }
   if (soundEnabled) {
-    try { playBeep(450, 720, 0.2); } catch (err) { console.debug('Pending alert beep failed', err); }
+    playNotificationSound();
   }
 }
 
-async function notifyNewOrder() {
+async function notifyNewOrder(order = null) {
   try {
     console.debug('notifyNewOrder called, soundEnabled=', soundEnabled, 'Notification.permission=', Notification.permission);
-    const notificationBody = 'Ha llegado un nuevo pedido disponible.';
+    const allyName = order?.commerce_name || 'un aliado';
+    const notificationBody = `Ha llegado un nuevo pedido de ${allyName}.`;
     if (Notification.permission === 'granted') {
       new Notification('On Delivery', { body: notificationBody, icon: 'icon-192.png' });
       console.debug('Notification shown');
@@ -893,14 +951,9 @@ async function notifyNewOrder() {
       }
     }
     if (soundEnabled) {
-      try {
-        console.debug('Attempting audioAlarm.play()');
-        await audioAlarm.play();
-        console.debug('audioAlarm.play() succeeded');
-      } catch (err) {
-        console.debug('audioAlarm.play() failed, falling back to WebAudio beep', err);
-        try { playBeep(); console.debug('playBeep() executed'); } catch (beepErr) { console.debug('playBeep() failed', beepErr); }
-      }
+      console.debug('Attempting notification sound');
+      await playNotificationSound();
+      console.debug('Notification sound attempt completed');
     } else {
       console.debug('soundEnabled is false, skipping audio');
     }
@@ -941,6 +994,7 @@ function startRealtimePoll() {
     }
     if (currentProfile.role === 'admin') {
       await loadAdminMetrics();
+      await loadMotoristasForAdmin();
       await loadAdminOrders();
     }
   }, 8000);
@@ -969,7 +1023,7 @@ async function setupRealtimeSubscriptions() {
       if (order.status === 'pending' && isAssignedCommerce) {
         console.debug('New available order for motorizado, reloading list', order.id);
         loadAvailableOrders();
-        notifyNewOrder();
+        notifyNewOrder(order);
       }
     }
     if (currentProfile.role === 'aliado' && payload.new.commerce_id === currentProfile.id) {
@@ -979,6 +1033,7 @@ async function setupRealtimeSubscriptions() {
     if (currentProfile.role === 'admin') {
       console.debug('New order for admin, refreshing metrics');
       loadAdminMetrics();
+      loadMotoristasForAdmin();
       loadAdminOrders();
     }
   }).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
@@ -993,6 +1048,7 @@ async function setupRealtimeSubscriptions() {
     }
     if (currentProfile.role === 'admin') {
       loadAdminMetrics();
+      loadMotoristasForAdmin();
       loadAdminOrders();
     }
   }).on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
@@ -1082,6 +1138,11 @@ elements.btnToggleStatus.addEventListener('click', () => {
   elements.motorStatusText.textContent = motorOn ? 'ON' : 'OFF';
 });
 elements.btnEnableNotifications.addEventListener('click', requestNotificationPermission);
+['pointerdown','touchstart','keydown','click'].forEach(eventName => {
+  document.addEventListener(eventName, () => {
+    unlockAudio();
+  }, { once: true, passive: true });
+});
 elements.motorHistoryFilter.addEventListener('change', () => setFilterInputsVisibility(elements.motorHistoryFilter, elements.motorStartDate, elements.motorEndDate));
 elements.adminOrderFilter.addEventListener('change', () => setFilterInputsVisibility(elements.adminOrderFilter, elements.adminStartDate, elements.adminEndDate));
 if (elements.aliadoOrderFilter) {
@@ -1120,11 +1181,11 @@ if (elements.photoCaptureInput) {
 if (elements.btnTestSound) {
   elements.btnTestSound.addEventListener('click', async () => {
     try {
-      await audioAlarm.play();
+      await playNotificationSound();
+      setStatus('Se intentó reproducir la alerta de sonido.', 'Atención');
     } catch (err) {
-      console.debug('Test audio play failed, trying WebAudio beep fallback:', err);
-      try { playBeep(); } catch (e) { console.debug('Fallback beep failed', e); }
-      setStatus('Si no se escuchó el archivo, se intentó un beep de respaldo.', 'Atención');
+      console.debug('Test sound failed', err);
+      setStatus('No se pudo reproducir la alerta de sonido.', 'Atención', false);
     }
   });
 }
