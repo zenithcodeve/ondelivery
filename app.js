@@ -70,6 +70,7 @@ let motorOn = true;
 let ordersChannel = null;
 let realtimePollInterval = null;
 let earningsResetAt = localStorage.getItem('earningsResetAt');
+let lastPendingOrderIds = [];
 
 const elements = {
   authSection: document.getElementById('auth-section'),
@@ -412,7 +413,15 @@ async function loadAvailableOrders() {
   const { data, error } = await query;
   if (error) return console.error(error);
   const list = data || [];
+  const currentIds = list.map(order => order.id);
+  const newIds = lastPendingOrderIds.length ? currentIds.filter(id => !lastPendingOrderIds.includes(id)) : [];
+  lastPendingOrderIds = currentIds;
   elements.availableOrdersList.innerHTML = list.length ? list.map(order => availableOrderHtml(order)).join('') : '<p class="note">No hay pedidos disponibles.</p>';
+
+  if (currentProfile.role === 'motorizado' && newIds.length) {
+    console.debug('New pending orders detected by polling', newIds);
+    notifyNewOrder();
+  }
 }
 
 function availableOrderHtml(order) {
@@ -513,64 +522,63 @@ function getOrderDuration(order) {
   return result.trim();
 }
 
+function escapeXlsValue(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 function buildOrdersXlsTable(orders) {
   const rows = orders.map(order => {
     const duration = getOrderDuration(order);
-    return `
-      <tr>
-        <td>${order.id || ''}</td>
-        <td>${order.status || ''}</td>
-        <td>${order.commerce_name || ''}</td>
-        <td>${order.requested_by_name || ''}</td>
-        <td>${order.assigned_to || ''}</td>
-        <td>${order.delivery_name || ''}</td>
-        <td>${order.delivery_phone || ''}</td>
-        <td>${order.delivery_address || ''}</td>
-        <td>${order.delivery_url || ''}</td>
-        <td>${order.price != null ? order.price : ''}</td>
-        <td>${order.urgent ? 'Sí' : 'No'}</td>
-        <td>${order.started_at || ''}</td>
-        <td>${order.delivered_at || ''}</td>
-        <td>${duration}</td>
-        <td>${order.created_at || ''}</td>
-        <td>${order.updated_at || ''}</td>
-        <td>${order.description || ''}</td>
-      </tr>`;
+    const cells = [
+      order.id || '',
+      order.status || '',
+      order.commerce_name || '',
+      order.requested_by_name || '',
+      order.assigned_to || '',
+      order.delivery_name || '',
+      order.delivery_phone || '',
+      order.delivery_address || '',
+      order.delivery_url || '',
+      order.price != null ? order.price : '',
+      order.urgent ? 'Sí' : 'No',
+      order.started_at || '',
+      order.delivered_at || '',
+      duration,
+      order.created_at || '',
+      order.updated_at || '',
+      order.description || '',
+    ];
+    return `<Row>${cells.map(value => `<Cell><Data ss:Type="String">${escapeXlsValue(value)}</Data></Cell>`).join('')}</Row>`;
   }).join('');
 
   const total = orders.reduce((sum, order) => sum + (parseFloat(order.price) || 0), 0);
-  return `
-    <table>
-      <tr>
-        <th>ID</th>
-        <th>Estado</th>
-        <th>Comercio</th>
-        <th>Solicitante</th>
-        <th>Motorizado</th>
-        <th>Receptor</th>
-        <th>Teléfono</th>
-        <th>Dirección</th>
-        <th>URL</th>
-        <th>Precio USD</th>
-        <th>Urgente</th>
-        <th>Inicio</th>
-        <th>Entrega</th>
-        <th>Duración</th>
-        <th>Creado</th>
-        <th>Actualizado</th>
-        <th>Descripción</th>
-      </tr>
-      ${rows}
-      <tr>
-        <td colspan="9"><strong>Total USD</strong></td>
-        <td><strong>${total.toFixed(2)}</strong></td>
-        <td colspan="7"></td>
-      </tr>
-    </table>`;
+  const headers = ['ID','Estado','Comercio','Solicitante','Motorizado','Receptor','Teléfono','Dirección','URL','Precio USD','Urgente','Inicio','Entrega','Duración','Creado','Actualizado','Descripción'];
+  const headerRow = `<Row>${headers.map(header => `<Cell><Data ss:Type="String">${escapeXlsValue(header)}</Data></Cell>`).join('')}</Row>`;
+  const totalRow = `<Row><Cell><Data ss:Type="String">Total USD</Data></Cell><Cell><Data ss:Type="String">${total.toFixed(2)}</Data></Cell></Row>`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+    <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+              xmlns:o="urn:schemas-microsoft-com:office:office"
+              xmlns:x="urn:schemas-microsoft-com:office:excel"
+              xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+              xmlns:html="http://www.w3.org/TR/REC-html40">
+      <Worksheet ss:Name="Pedidos">
+        <Table>
+          ${headerRow}
+          ${rows}
+          ${totalRow}
+        </Table>
+      </Worksheet>
+    </Workbook>`;
 }
 
 function downloadXls(filename, tableHtml) {
-  const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel' });
+  const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
